@@ -45,7 +45,7 @@ export function extractFileHeader(arrayBuffer) {
 
   // Matches "January 1-31, 2026" and "February 1-28, 2026" etc.
   // The dash may be a hyphen or en-dash depending on QB version.
-  const dateMatch = dateRange?.match(/^(\w+)\s+\d+[-\u2013]\d+,\s+(\d{4})/)
+  const dateMatch = dateRange?.match(/^(\w+)(?:\s+\d+[-\u2013]\d+,)?\s+(\d{4})/)
 
   return {
     companySlug:  companyName ? (QB_COMPANY_TO_SLUG[companyName] ?? null) : null,
@@ -125,3 +125,4 @@ export function applyMappings(rawItems, mappings) {
     unmappedLabels: [],
   }
 }
+
