@@ -40,11 +40,16 @@ export function extractFileHeader(arrayBuffer) {
   const sheet    = workbook.Sheets[workbook.SheetNames[0]]
   const rows     = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null })
 
-  const companyName = typeof rows[1]?.[0] === 'string' ? rows[1][0].trim() : null
-  const dateRange   = typeof rows[2]?.[0] === 'string' ? rows[2][0].trim() : null
+  let companyName = null
+  let dateRange   = null
 
-  // Matches "January 1-31, 2026" and "February 1-28, 2026" etc.
-  // The dash may be a hyphen or en-dash depending on QB version.
+  for (const row of rows.slice(0, 5)) {
+    const cell = typeof row[0] === 'string' ? row[0].trim() : null
+    if (!cell) continue
+    if (!companyName && QB_COMPANY_TO_SLUG[cell] !== undefined) companyName = cell
+    if (!dateRange   && /^(\w+)(?:\s+\d+[-\u2013]\d+,)?\s+(\d{4})/.test(cell)) dateRange = cell
+  }
+
   const dateMatch = dateRange?.match(/^(\w+)(?:\s+\d+[-\u2013]\d+,)?\s+(\d{4})/)
 
   return {
@@ -54,7 +59,6 @@ export function extractFileHeader(arrayBuffer) {
     year:  dateMatch ? parseInt(dateMatch[2]) : null,
   }
 }
-
 // Extracts raw line items from a QB P&L xlsx file.
 // Accepts an ArrayBuffer (from file.arrayBuffer() in the browser).
 // Returns an array of { rawLabel: string, amountCents: number }.
