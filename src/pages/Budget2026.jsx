@@ -71,6 +71,8 @@ export default function Budget2026() {
   const [rows,       setRows]       = useState([])
   const [loading,    setLoading]    = useState(true)
   const [fetchError, setFetchError] = useState(null)
+  const [showVariance,  setShowVariance]  = useState(false)
+  const [actualsData,   setActualsData]   = useState(null)
 
   useEffect(() => {
     supabase
@@ -88,6 +90,26 @@ export default function Budget2026() {
       })
   }, [])
 
+  useEffect(() => {
+    Promise.all([
+      supabase.from('actuals').select('category_slug,month,amount_cents')
+        .eq('year', DASHBOARD_YEAR).eq('status', 'active'),
+      supabase.from('categories').select('slug,variance_direction'),
+    ]).then(([{ data: aData, error: aErr }, { data: cData, error: cErr }]) => {
+      if (aErr || cErr) return
+      const map    = {}
+      const closed = new Set()
+      for (const r of aData ?? []) {
+        const key = `${r.category_slug}-${r.month}`
+        map[key]  = (map[key] ?? 0) + r.amount_cents
+        closed.add(r.month - 1)
+      }
+      const dirs = {}
+      for (const r of cData ?? []) dirs[r.slug] = r.variance_direction
+      setActualsData({ map, closed, dirs })
+    })
+  }, [])
+
   if (loading)    return <div className="page"><p className="ref-status">Loading…</p></div>
   if (fetchError) return <div className="page"><p className="ref-error">{fetchError}</p></div>
 
@@ -98,8 +120,18 @@ export default function Budget2026() {
         Original annual budget and monthly distribution for all tracked categories.
         Read-only — no editing in version 1.
       </p>
-
-      <div className="ref-table-wrapper">
+<div style={{ margin: '12px 0' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem' }}>
+          <input
+            type="checkbox"
+            checked={showVariance}
+            onChange={e => setShowVariance(e.target.checked)}
+          />
+          Show vs Actuals
+        </label>
+      </div>
+      
+<div className="ref-table-wrapper">
         <table className="ref-table budget-table">
           <thead>
             <tr>
@@ -124,9 +156,24 @@ export default function Budget2026() {
                     {row.label}
                   </td>
                   <td className="ref-td-num ref-td-annual">{fmt(row.annual)}</td>
-                  {row.monthly.map((cents, i) => (
-                    <td key={i} className="ref-td-num">{fmt(cents)}</td>
-                  ))}
+                  {row.monthly.map((cents, i) => {
+                    const canShow = showVariance && actualsData && actualsData.closed.has(i) && row.slug && cents !== 0
+                    if (!canShow) return <td key={i} className="ref-td-num">{fmt(cents)}</td>
+                    const actual  = actualsData.map[`${row.slug}-${i + 1}`] ?? 0
+                    const diff    = actual - cents
+                    const dir     = actualsData.dirs[row.slug]
+                    const good    = dir === 'higher_is_better' ? diff >= 0 : diff <= 0
+                    const bg      = diff === 0 ? '' : good ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)'
+                    const pct     = Math.round((diff / Math.abs(cents)) * 100)
+                    const pctStr  = (diff >= 0 ? '+' : '') + pct + '%'
+                    const pctClr  = diff === 0 ? '#888' : good ? '#16a34a' : '#dc2626'
+                    return (
+                      <td key={i} className="ref-td-num" style={{ background: bg }}>
+                        {fmt(cents)}
+                        <div style={{ fontSize: '0.7em', color: pctClr, marginTop: '1px' }}>{pctStr}</div>
+                      </td>
+                    )
+                  })}
                 </tr>
               )
             })}
