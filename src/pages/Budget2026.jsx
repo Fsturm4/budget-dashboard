@@ -80,7 +80,7 @@ export default function Budget2026() {
   const [rows,       setRows]       = useState([])
   const [loading,    setLoading]    = useState(true)
   const [fetchError, setFetchError] = useState(null)
-  const [showVariance,  setShowVariance]  = useState(false)
+  const [showVariance,  setShowVariance]  = useState(true)
   const [actualsData,   setActualsData]   = useState(null)
 
   useEffect(() => {
