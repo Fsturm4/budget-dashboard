@@ -129,6 +129,11 @@ export default function Budget2026() {
           />
           Show vs Actuals
         </label>
+        <div style={{ marginTop: '4px', fontSize: '0.72rem', color: '#888', lineHeight: '1.5' }}>
+          <span style={{ color: '#16a34a' }}>■</span> Favorable &nbsp;
+          <span style={{ color: '#dc2626' }}>■</span> Unfavorable &nbsp;·&nbsp;
+          Revenue/profit: above budget is favorable &nbsp;·&nbsp; Expense/cost: below budget is favorable
+        </div>
       </div>
       
 <div className="ref-table-wrapper">
