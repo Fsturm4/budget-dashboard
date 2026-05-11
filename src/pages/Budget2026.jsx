@@ -6,6 +6,15 @@ import { TABLE_ROWS, SECTION_SLUGS } from '../lib/trackerRows.js'
 const MONTH_COLS  = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
 const MONTH_HEADS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
+const DERIVED_VAR_DIR = {
+  total_rev:    'higher_is_better',
+  total_cogs:   'lower_is_better',
+  gross_profit: 'higher_is_better',
+  total_opex:   'lower_is_better',
+  noi:          'higher_is_better',
+  net_income:   'higher_is_better',
+}
+
 // Compact whole-dollar format for the wide budget table.
 // Zero budget months show em dash (Owner Wages Jan–Apr, Insurance lump months, etc.)
 function fmt(cents) {
@@ -104,9 +113,23 @@ export default function Budget2026() {
         map[key]  = (map[key] ?? 0) + r.amount_cents
         closed.add(r.month - 1)
       }
-      const dirs = {}
+     const dirs = {}
       for (const r of cData ?? []) dirs[r.slug] = r.variance_direction
-      setActualsData({ map, closed, dirs })
+      const sec = {}
+      for (const [name, slugs] of Object.entries(SECTION_SLUGS)) {
+        sec[name] = Array.from({ length: 12 }, (_, i) =>
+          slugs.reduce((sum, slug) => sum + (map[`${slug}-${i + 1}`] ?? 0), 0)
+        )
+      }
+      const derivedMap = {
+        total_rev:    sec.revenue,
+        total_cogs:   sec.cogs,
+        gross_profit: sec.revenue.map((v, i) => v - sec.cogs[i]),
+        total_opex:   sec.opex,
+        noi:          sec.revenue.map((v, i) => v - sec.cogs[i] - sec.opex[i]),
+        net_income:   sec.revenue.map((v, i) => v - sec.cogs[i] - sec.opex[i] + (sec.other?.[i] ?? 0)),
+      }
+      setActualsData({ map, closed, dirs, derivedMap })
     })
   }, [])
 
@@ -161,17 +184,20 @@ export default function Budget2026() {
                     {row.label}
                   </td>
                   <td className="ref-td-num ref-td-annual">{fmt(row.annual)}</td>
-                  {row.monthly.map((cents, i) => {
-                    const canShow = showVariance && actualsData && actualsData.closed.has(i) && row.slug && cents !== 0
-                    if (!canShow) return <td key={i} className="ref-td-num">{fmt(cents)}</td>
-                    const actual  = actualsData.map[`${row.slug}-${i + 1}`] ?? 0
-                    const diff    = actual - cents
-                    const dir     = actualsData.dirs[row.slug]
-                    const good    = dir === 'higher_is_better' ? diff >= 0 : diff <= 0
-                    const bg      = diff === 0 ? '' : good ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)'
-                    const pct     = Math.round((diff / Math.abs(cents)) * 100)
-                    const pctStr  = (diff >= 0 ? '+' : '') + pct + '%'
-                    const pctClr  = diff === 0 ? '#888' : good ? '#16a34a' : '#dc2626'
+               {row.monthly.map((cents, i) => {
+                    const isInputRow   = showVariance && actualsData && actualsData.closed.has(i) && row.slug && cents !== 0
+                    const isDerivedRow = showVariance && actualsData && actualsData.closed.has(i) && row.type === 'derived' && row.key in DERIVED_VAR_DIR && cents !== 0
+                    if (!isInputRow && !isDerivedRow) return <td key={i} className="ref-td-num">{fmt(cents)}</td>
+                    const actual = isInputRow
+                      ? (actualsData.map[`${row.slug}-${i + 1}`] ?? 0)
+                      : (actualsData.derivedMap?.[row.key]?.[i] ?? 0)
+                    const dir    = isInputRow ? actualsData.dirs[row.slug] : DERIVED_VAR_DIR[row.key]
+                    const diff   = actual - cents
+                    const good   = dir === 'higher_is_better' ? diff >= 0 : diff <= 0
+                    const bg     = diff === 0 ? '' : good ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)'
+                    const pct    = Math.round((diff / Math.abs(cents)) * 100)
+                    const pctStr = (diff >= 0 ? '+' : '') + pct + '%'
+                    const pctClr = diff === 0 ? '#888' : good ? '#16a34a' : '#dc2626'
                     return (
                       <td key={i} className="ref-td-num" style={{ background: bg }}>
                         {fmt(cents)}
