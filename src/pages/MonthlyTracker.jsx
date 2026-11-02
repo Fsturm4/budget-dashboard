@@ -242,6 +242,7 @@ export default function MonthlyTracker() {
             </thead>
             <tbody>
               {rows.map(row => {
+                if (row.pending && row.actual === 0) return null
                 if (row.type === 'section') {
                   return (
                     <tr key={row.idx} className="tracker-section-row">

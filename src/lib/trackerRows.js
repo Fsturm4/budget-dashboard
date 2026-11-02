@@ -9,6 +9,7 @@ export const TABLE_ROWS = [
   { type: 'section', label: 'Revenue' },
   { type: 'input',   slug: 'turf_pro_net_revenue',       label: 'Turf Pro Net Revenue',                     varDir: H },
   { type: 'input',   slug: 'greenace_net_revenue',        label: 'GreenAce Net Revenue',                     varDir: H },
+  { type: 'input',   slug: 'pending_revenue',             label: 'Uncategorized – Pending Review',          varDir: H, pending: true },
   { type: 'derived', key: 'total_rev',                    label: 'Total Net Revenue',                        varDir: H },
 
   { type: 'section', label: 'Cost of Goods Sold' },
@@ -16,6 +17,7 @@ export const TABLE_ROWS = [
   { type: 'input',   slug: 'seed',                        label: 'Seed',                                     varDir: L },
   { type: 'input',   slug: 'lawn_flags',                  label: 'Lawn Flags',                               varDir: L },
   { type: 'input',   slug: 'subcontract_labor',           label: 'Subcontract Labor',                        varDir: L },
+  { type: 'input',   slug: 'pending_cogs',                label: 'Uncategorized – Pending Review',          varDir: L, pending: true },
   { type: 'derived', key: 'total_cogs',                   label: 'Total COGS',                               varDir: L },
   { type: 'derived', key: 'gross_profit',                 label: 'Gross Profit',                             varDir: H },
 
@@ -56,18 +58,20 @@ export const TABLE_ROWS = [
   { type: 'input',   slug: 'vehicle_registration',        label: 'Vehicle Registration',                     varDir: L },
   { type: 'input',   slug: 'vehicle_expense',             label: 'Vehicle Expense',                          varDir: L },
   { type: 'input',   slug: 'penalties_and_fees',          label: 'Penalties & Fees',                         varDir: L },
+  { type: 'input',   slug: 'pending_opex',                label: 'Uncategorized – Pending Review',          varDir: L, pending: true },
   { type: 'derived', key: 'total_opex',                   label: 'Total Operating Expenses',                 varDir: L },
   { type: 'derived', key: 'noi',                          label: 'Net Operating Income',                     varDir: H },
 
   { type: 'section', label: 'Other' },
   { type: 'input',   slug: 'other_income_expense',        label: 'Other Income / (Expense)',                 varDir: H },
+  { type: 'input',   slug: 'pending_other',               label: 'Uncategorized – Pending Review',          varDir: H, pending: true },
   { type: 'derived', key: 'net_income',                   label: 'Net Income',                               varDir: H },
 ]
 
 // Slug membership by section — drives section-total computation for derived rows.
 export const SECTION_SLUGS = {
-  revenue: ['turf_pro_net_revenue', 'greenace_net_revenue'],
-  cogs:    ['supplies_and_materials', 'seed', 'lawn_flags', 'subcontract_labor'],
+  revenue: ['turf_pro_net_revenue', 'greenace_net_revenue', 'pending_revenue'],
+  cogs:    ['supplies_and_materials', 'seed', 'lawn_flags', 'subcontract_labor', 'pending_cogs'],
   opex: [
     'owner_wages', 'rent_and_lease', 'advertising_and_marketing',
     'car_repairs_and_maintenance', 'depreciation', 'insurance_health',
@@ -78,7 +82,7 @@ export const SECTION_SLUGS = {
     'dues_and_subscriptions', 'professional_fees', 'bank_fees', 'tax_property',
     'email', 'education', 'interest_paid', 'entertainment', 'licenses_and_permits',
     'tax_excise', 'payroll_taxes_non_owner', 'vehicle_registration', 'vehicle_expense',
-    'penalties_and_fees',
+    'penalties_and_fees', 'pending_opex',
   ],
-  other: ['other_income_expense'],
+  other: ['other_income_expense', 'pending_other'],
 }

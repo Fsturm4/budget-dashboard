@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
-import { extractFileHeader, extractLineItems, applyMappings } from '../lib/qbParser.js'
+import { extractFileHeader, extractLineItems, applyMappings, pendingActuals } from '../lib/qbParser.js'
 import { formatDollars } from '../lib/money.js'
 import {
   COMPANIES, COMPANY_LABELS, MONTH_LABELS,
@@ -38,11 +38,15 @@ export default function Upload() {
   // Processing results — set when both files map successfully
   const [tpMapped,       setTpMapped]       = useState([])
   const [gaMapped,       setGaMapped]       = useState([])
-  const [unmappedIssues, setUnmappedIssues] = useState([]) // [{company, labels}]
+  const [unmappedIssues, setUnmappedIssues] = useState([]) // [{company, items}]
+  const [approvedKeys,   setApprovedKeys]   = useState(new Set()) // `${company}|${rawLabel}` approved for Pending Review
+  const [tpPending,      setTpPending]      = useState([])
+  const [gaPending,      setGaPending]      = useState([])
 
   // Shared reference data loaded once on mount
-  const [mappings,      setMappings]      = useState([])
-  const [categoryNames, setCategoryNames] = useState({})
+  const [mappings,         setMappings]         = useState([])
+  const [categoryNames,    setCategoryNames]    = useState({})
+  const [categorySections, setCategorySections] = useState({})
   const [refDataReady,  setRefDataReady]  = useState(false) // gate: both must load before files are accepted
   const [error,         setError]         = useState(null)
 
@@ -52,11 +56,13 @@ export default function Upload() {
   // mappings array and produce false unmapped failures for every label.
   useEffect(() => {
     Promise.all([
-      supabase.from('categories').select('slug, display_name'),
+      supabase.from('categories').select('slug, display_name, section'),
       supabase.from('mappings').select('company, raw_label, category_slug'),
     ]).then(([catRes, mapRes]) => {
-      if (catRes.data)
+      if (catRes.data) {
         setCategoryNames(Object.fromEntries(catRes.data.map(c => [c.slug, c.display_name])))
+        setCategorySections(Object.fromEntries(catRes.data.map(c => [c.slug, c.section])))
+      }
       if (mapRes.data)
         setMappings(mapRes.data)
       if (!catRes.error && !mapRes.error)
@@ -175,14 +181,19 @@ export default function Upload() {
     const tpMappings = mappings.filter(m => m.company === COMPANIES.TURF_PRO)
     const gaMappings = mappings.filter(m => m.company === COMPANIES.GREENACE)
 
-    const tpResult = applyMappings(tpRawItems, tpMappings)
-    const gaResult = applyMappings(gaRawItems, gaMappings)
+    const tpResult = applyMappings(tpRawItems, tpMappings, categorySections)
+    const gaResult = applyMappings(gaRawItems, gaMappings, categorySections)
+
+    setTpMapped(tpResult.mapped)
+    setGaMapped(gaResult.mapped)
+    setTpPending([])
+    setGaPending([])
 
     const issues = []
-    if (tpResult.unmappedLabels.length > 0)
-      issues.push({ company: COMPANIES.TURF_PRO, labels: tpResult.unmappedLabels })
-    if (gaResult.unmappedLabels.length > 0)
-      issues.push({ company: COMPANIES.GREENACE, labels: gaResult.unmappedLabels })
+    if (tpResult.unmappedItems.length > 0)
+      issues.push({ company: COMPANIES.TURF_PRO, items: tpResult.unmappedItems })
+    if (gaResult.unmappedItems.length > 0)
+      issues.push({ company: COMPANIES.GREENACE, items: gaResult.unmappedItems })
 
     if (issues.length > 0) {
       // Failure path: write audit records then show the failure screen.
@@ -192,13 +203,29 @@ export default function Upload() {
       // raw_uploads write fails), which leaves an incomplete record in the
       // audit log but does not affect any actuals.
       writeFailedAuditRecords(issues, tpRawItems, gaRawItems)
+      setApprovedKeys(new Set())
       setUnmappedIssues(issues)
       setStep(STEP.UNMAPPED)
       return
     }
 
-    setTpMapped(tpResult.mapped)
-    setGaMapped(gaResult.mapped)
+    setStep(STEP.PREVIEW)
+  }
+
+  function toggleApproved(key) {
+    setApprovedKeys(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  // Called only once every unmapped account has been individually approved.
+  function importWithPending() {
+    const itemsFor = company => unmappedIssues.find(issue => issue.company === company)?.items ?? []
+    setTpPending(itemsFor(COMPANIES.TURF_PRO))
+    setGaPending(itemsFor(COMPANIES.GREENACE))
     setStep(STEP.PREVIEW)
   }
 
@@ -218,7 +245,7 @@ export default function Upload() {
           month:           parseInt(month),
           status:          UPLOAD_STATUS.FAILED_UNMAPPED,
           source:          UPLOAD_SOURCE.QB_UPLOAD,
-          unmapped_labels: issue.labels,
+          unmapped_labels: issue.items.map(item => item.rawLabel),
         })
         .select('id')
         .single()
@@ -235,19 +262,27 @@ export default function Upload() {
     }
   }
 
-  // Confirm handler: single RPC call writes uploads, raw_uploads, and actuals
-  // in one database transaction. If the RPC fails, nothing is written.
+  const tpRows = [...tpMapped, ...pendingActuals(tpPending)]
+  const gaRows = [...gaMapped, ...pendingActuals(gaPending)]
+
+  // Confirm handler: single RPC call writes uploads, raw_uploads, actuals and
+  // pending accounts in one database transaction. If the RPC fails, nothing is written.
   async function handleConfirm() {
     setStep(STEP.CONFIRMING)
     setError(null)
 
+    const pendingPayload = items => items.map(i => ({ raw_label: i.rawLabel, qb_section: i.qbSection, amount_cents: i.amountCents }))
     const { error: rpcError } = await supabase.rpc('upload_monthly_actuals', {
       p_year:          DASHBOARD_YEAR,
       p_month:         parseInt(month),
       p_tp_raw_items:  tpSlot.rawItems.map(i => ({ raw_label: i.rawLabel, amount_cents: i.amountCents })),
       p_ga_raw_items:  gaSlot.rawItems.map(i => ({ raw_label: i.rawLabel, amount_cents: i.amountCents })),
-      p_tp_actuals:    tpMapped.map(r => ({ category_slug: r.categorySlug, amount_cents: r.amountCents })),
-      p_ga_actuals:    gaMapped.map(r => ({ category_slug: r.categorySlug, amount_cents: r.amountCents })),
+      p_tp_actuals:    tpRows.map(r => ({ category_slug: r.categorySlug, amount_cents: r.amountCents })),
+      p_ga_actuals:    gaRows.map(r => ({ category_slug: r.categorySlug, amount_cents: r.amountCents })),
+      ...(tpPending.length + gaPending.length > 0 && {
+        p_tp_pending: pendingPayload(tpPending),
+        p_ga_pending: pendingPayload(gaPending),
+      }),
     })
 
     if (rpcError) {
@@ -360,18 +395,43 @@ export default function Upload() {
             The following QuickBooks line items have no mapping rule and could not be
             matched to a dashboard category. No actuals were written.
           </p>
-          {unmappedIssues.map(({ company, labels }) => (
+          {unmappedIssues.map(({ company, items }) => (
             <div key={company}>
               <p className="upload-unmapped-company">{COMPANY_LABELS[company]}</p>
               <ul className="upload-unmapped-list">
-                {labels.map(label => <li key={label}><code>{label}</code></li>)}
+                {items.map((item, index) => {
+                  const key = `${company}|${index}`
+                  return (
+                    <li key={key}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={approvedKeys.has(key)}
+                          onChange={() => toggleApproved(key)}
+                        />{' '}
+                        <code>{item.rawLabel}</code> — {item.qbSection}, {formatDollars(item.amountCents)} —
+                        import as Uncategorized / Pending Review
+                      </label>
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           ))}
           <p>
             Go to <strong>Settings → Mappings</strong>, add a rule for each label above,
-            then re-upload both files for this month.
+            then re-upload both files for this month. Or, if an account should stay
+            unclassified for now, tick it above to import it as Pending Review. It is
+            counted in its own QuickBooks section and can be reclassified later from
+            the Audit Log.
           </p>
+          <button
+            className="upload-confirm-btn"
+            disabled={approvedKeys.size !== unmappedIssues.reduce((n, issue) => n + issue.items.length, 0)}
+            onClick={importWithPending}
+          >
+            Continue with these accounts as Pending Review
+          </button>
           <p className="upload-unmapped-audit">
             The raw line items from this attempt are recorded in the{' '}
             <a href="/audit">Audit Log</a>.
@@ -389,10 +449,17 @@ export default function Upload() {
             Both files mapped successfully. Confirm to write all actuals in a single
             transaction. Nothing is saved until you confirm.
           </p>
+          {tpPending.length + gaPending.length > 0 && (
+            <p className="upload-preview-sub">
+              Pending Review:{' '}
+              {[...tpPending, ...gaPending].map(item => `${item.rawLabel} (${formatDollars(item.amountCents)})`).join(', ')}.
+              These will be listed in the Audit Log until reclassified.
+            </p>
+          )}
 
           {[
-            { company: COMPANIES.TURF_PRO,  rows: tpMapped, qbTotals: tpSlot.qbTotals },
-            { company: COMPANIES.GREENACE,  rows: gaMapped, qbTotals: gaSlot.qbTotals },
+            { company: COMPANIES.TURF_PRO,  rows: tpRows, qbTotals: tpSlot.qbTotals },
+            { company: COMPANIES.GREENACE,  rows: gaRows, qbTotals: gaSlot.qbTotals },
           ].map(({ company, rows, qbTotals }) => (
             <div key={company} className="upload-preview-section">
               <p className="upload-preview-company">{COMPANY_LABELS[company]}</p>

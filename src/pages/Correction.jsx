@@ -6,7 +6,8 @@ import { COMPANY_LABELS, MONTH_LABELS, ACTUALS_STATUS, DASHBOARD_YEAR } from '..
 import { TABLE_ROWS } from '../lib/trackerRows.js'
 
 // Input rows in display order — used to build the category selector.
-const INPUT_ROWS = TABLE_ROWS.filter(r => r.type === 'input')
+// Pending Review lines are changed only by reclassifying from the Audit Log.
+const INPUT_ROWS = TABLE_ROWS.filter(r => r.type === 'input' && !r.pending)
 
 // Validates that the corrected amount string is a parseable dollar amount.
 // Accepts whole dollars or decimals: "1234", "1234.56", "-200".

@@ -191,6 +191,16 @@ export default function Overview() {
   const [dashData,   setDashData]   = useState(null)
   const [loading,    setLoading]    = useState(true)
   const [fetchError, setFetchError] = useState(null)
+  const [pendingItems, setPendingItems] = useState([])
+
+  // Separate from the dashboard load: if this fails, the notice is simply not shown.
+  useEffect(() => {
+    supabase
+      .from('pending_items')
+      .select('amount_cents')
+      .eq('status', 'pending')
+      .then(({ data }) => setPendingItems(data ?? []))
+  }, [])
 
   // Single fetch on mount — three parallel queries, all required before render.
   // Fail-fast: any query error surfaces immediately with a plain message.
@@ -230,6 +240,13 @@ export default function Overview() {
 
       {/* ── context line ────────────────────────────────────────────────── */}
       <p className="overview-context">{contextLine}</p>
+      {pendingItems.length > 0 && (
+        <p className="overview-context">
+          {pendingItems.length} QuickBooks account{pendingItems.length !== 1 ? 's' : ''} pending review
+          ({formatDollars(pendingItems.reduce((sum, item) => sum + item.amount_cents, 0))}) —{' '}
+          <a href="/audit">reclassify in the Audit Log</a>
+        </p>
+      )}
 
       {/* ── KPI cards ───────────────────────────────────────────────────── */}
       <section className="overview-section">

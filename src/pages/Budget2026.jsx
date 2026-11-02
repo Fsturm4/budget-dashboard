@@ -170,6 +170,7 @@ export default function Budget2026() {
           </thead>
           <tbody>
             {rows.map(row => {
+              if (row.pending) return null  // no budget; shown on the Monthly Tracker instead
               if (row.type === 'section') {
                 return (
                   <tr key={row.idx} className="ref-section-row">

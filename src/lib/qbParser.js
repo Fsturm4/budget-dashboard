@@ -80,7 +80,7 @@ export function extractFileHeader(arrayBuffer) {
 // Extracts raw line items from a QB P&L xlsx file.
 // Accepts an ArrayBuffer (from file.arrayBuffer() in the browser).
 // Returns {
-//   items:      [{ rawLabel, amountCents }]  — account-level rows only
+//   items:      [{ rawLabel, amountCents, qbSection }]  — account-level rows only
 //   qbTotals:   [{ label, amountCents }]     — QB section totals and Net Income, kept for reconciliation
 //   mismatches: [string]                     — reconciliation failures; non-empty means do not import
 // }
@@ -144,7 +144,7 @@ export function extractLineItems(arrayBuffer) {
     if (section) sectionSums[section] = (sectionSums[section] ?? 0) + amountCents
     else mismatches.push(`"${trimmed}" is not inside an Income, Cost of Goods Sold, Expenses, Other Income or Other Expenses section`)
 
-    items.push({ rawLabel: trimmed, amountCents })
+    items.push({ rawLabel: trimmed, amountCents, qbSection: section })
   }
 
   if (!qbTotals.some(total => total.label === 'Net Income'))
@@ -153,32 +153,46 @@ export function extractLineItems(arrayBuffer) {
   return { items, qbTotals, mismatches }
 }
 
+// The dashboard section that holds each QuickBooks P&L section.
+export const QB_SECTION_TO_DASHBOARD = {
+  'Income':             'revenue',
+  'Cost of Goods Sold': 'cogs',
+  'Expenses':           'opex',
+  'Other Income':       'other',
+  'Other Expenses':     'other',
+}
+
+// The dashboard's single Other bucket is signed (income +, expense −), but QB
+// shows Other Expenses as positive amounts.
+function dashboardCents({ qbSection, amountCents }, dashboardSection) {
+  return qbSection === 'Other Expenses' && dashboardSection === 'other' ? -amountCents : amountCents
+}
+
 // Applies the mappings table rules to a set of raw line items.
-// mappings: array of { raw_label: string, category_slug: string }
+// mappings:      array of { raw_label: string, category_slug: string }
+// sectionBySlug: { [category_slug]: 'revenue' | 'cogs' | 'opex' | 'other' }
 //
-// Returns:
-//   { mapped: [{ categorySlug, amountCents }], unmappedLabels: [] }  — all mapped
-//   { mapped: null, unmappedLabels: [string, ...] }                  — some unmapped
+// Returns {
+//   mapped:        [{ categorySlug, amountCents }]       — mapped accounts, summed per category
+//   unmappedItems: [{ rawLabel, amountCents, qbSection }] — accounts with no mapping rule
+// }
 //
 // Rows that share a category slug are summed (e.g. Sales + Refunds → net revenue).
-// The caller must not write actuals if unmappedLabels is non-empty.
-export function applyMappings(rawItems, mappings) {
+// The caller must not write actuals while unmappedItems is non-empty, unless
+// each one has been explicitly approved for Pending Review (see pendingActuals).
+export function applyMappings(rawItems, mappings, sectionBySlug) {
   const ruleMap = new Map(mappings.map(m => [m.raw_label, m.category_slug]))
 
-  const totals         = {}
-  const unmappedLabels = []
+  const totals        = {}
+  const unmappedItems = []
 
-  for (const { rawLabel, amountCents } of rawItems) {
-    const slug = ruleMap.get(rawLabel)
+  for (const item of rawItems) {
+    const slug = ruleMap.get(item.rawLabel)
     if (!slug) {
-      if (!unmappedLabels.includes(rawLabel)) unmappedLabels.push(rawLabel)
+      unmappedItems.push(item)
       continue
     }
-    totals[slug] = (totals[slug] ?? 0) + amountCents
-  }
-
-  if (unmappedLabels.length > 0) {
-    return { mapped: null, unmappedLabels }
+    totals[slug] = (totals[slug] ?? 0) + dashboardCents(item, sectionBySlug[slug])
   }
 
   return {
@@ -186,7 +200,19 @@ export function applyMappings(rawItems, mappings) {
       categorySlug,
       amountCents,
     })),
-    unmappedLabels: [],
+    unmappedItems,
   }
+}
+
+// Pending Review lines for approved unmapped accounts: one per dashboard
+// section, in that section's "pending_" category.
+export function pendingActuals(unmappedItems) {
+  const totals = {}
+  for (const item of unmappedItems) {
+    const section = QB_SECTION_TO_DASHBOARD[item.qbSection]
+    const slug    = `pending_${section}`
+    totals[slug]  = (totals[slug] ?? 0) + dashboardCents(item, section)
+  }
+  return Object.entries(totals).map(([categorySlug, amountCents]) => ({ categorySlug, amountCents }))
 }
 
