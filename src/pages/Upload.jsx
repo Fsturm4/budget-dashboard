@@ -152,8 +152,12 @@ export default function Upload() {
       return
     }
 
-    const rawItems = extractLineItems(buffer)
-    const newSlot  = { valid: true, rawItems, error: null }
+    const { items: rawItems, qbTotals, mismatches } = extractLineItems(buffer)
+    if (mismatches.length > 0) {
+      setSlot({ valid: false, rawItems: [], error: `Does not reconcile to QuickBooks: ${mismatches.join('; ')}.` })
+      return
+    }
+    const newSlot  = { valid: true, rawItems, qbTotals, error: null }
     setSlot(newSlot)
 
     // If the other company's slot is already valid, both are ready — run mapping now.
@@ -387,9 +391,9 @@ export default function Upload() {
           </p>
 
           {[
-            { company: COMPANIES.TURF_PRO,  rows: tpMapped },
-            { company: COMPANIES.GREENACE,  rows: gaMapped },
-          ].map(({ company, rows }) => (
+            { company: COMPANIES.TURF_PRO,  rows: tpMapped, qbTotals: tpSlot.qbTotals },
+            { company: COMPANIES.GREENACE,  rows: gaMapped, qbTotals: gaSlot.qbTotals },
+          ].map(({ company, rows, qbTotals }) => (
             <div key={company} className="upload-preview-section">
               <p className="upload-preview-company">{COMPANY_LABELS[company]}</p>
               <table className="upload-table">
@@ -404,6 +408,22 @@ export default function Upload() {
                     <tr key={row.categorySlug}>
                       <td>{categoryNames[row.categorySlug] ?? row.categorySlug}</td>
                       <td className="col-right">{formatDollars(row.amountCents)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <table className="upload-table">
+                <thead>
+                  <tr>
+                    <th>QuickBooks total (reconciled)</th>
+                    <th className="col-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {qbTotals.map(total => (
+                    <tr key={total.label}>
+                      <td>{total.label}</td>
+                      <td className="col-right">{formatDollars(total.amountCents)}</td>
                     </tr>
                   ))}
                 </tbody>
