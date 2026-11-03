@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { supabase } from '../lib/supabase.js'
 
 const PRIMARY_LINKS = [
   { to: '/',             label: 'Overview',          end: true  },
@@ -39,6 +40,7 @@ export default function Nav() {
         ))}
         <NavLink to="/settings" title="Settings" className={iconClass}>⚙</NavLink>
         <NavLink to="/help"     title="Help"     className={iconClass}>?</NavLink>
+        <button className="nav-link" onClick={() => supabase.auth.signOut()}>Sign out</button>
       </div>
     </nav>
   )
