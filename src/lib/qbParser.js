@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx'
+import { formatDollars } from './money.js'
 
 // QB P&L exports contain calculated summary rows and section headers that are
 // not mappable line items. Skip all of these during extraction.
@@ -14,6 +15,23 @@ const SKIP_LABELS = new Set([
   'Net Income',
   'Net Other Income',
 ])
+
+// How each QB section header contributes to Net Income.
+const SECTION_NET_SIGN = {
+  'Income':             1,
+  'Cost of Goods Sold': -1,
+  'Expenses':           -1,
+  'Other Income':       1,
+  'Other Expenses':     -1,
+}
+
+// Rows that close a QB section, in both the "Total Income" and "Total for Income" forms.
+const SECTION_TOTAL_LABELS = Object.fromEntries(
+  Object.keys(SECTION_NET_SIGN).flatMap(section => [
+    [`Total ${section}`,     section],
+    [`Total for ${section}`, section],
+  ])
+)
 
 // Maps the exact company name string from QB row 2 to an internal slug.
 // Handles the "GeenAce" typo present in the actual QB exports.
@@ -61,11 +79,19 @@ export function extractFileHeader(arrayBuffer) {
 }
 // Extracts raw line items from a QB P&L xlsx file.
 // Accepts an ArrayBuffer (from file.arrayBuffer() in the browser).
-// Returns an array of { rawLabel: string, amountCents: number }.
+// Returns {
+//   items:      [{ rawLabel, amountCents }]  — account-level rows only
+//   qbTotals:   [{ label, amountCents }]     — QB section totals and Net Income, kept for reconciliation
+//   mismatches: [string]                     — reconciliation failures; non-empty means do not import
+// }
 //
 // Rules:
 //   - Column A is the label, column B is the amount.
-//   - Rows starting with "Total for" are sub-totals — skipped.
+//   - Section totals ("Total Income", "Total Expenses", ...) and Net Income are
+//     not line items; each is compared against the sum of the accounts it covers.
+//   - Rows starting with "Total for" are group sub-totals — skipped. A parent
+//     account's own amount row is kept; its "Total for" row is not, so parent
+//     and children are counted once.
 //   - SKIP_LABELS rows are calculated/header rows — skipped.
 //   - Parent container rows with no numeric amount are skipped.
 //   - Rows that map to the same category are summed at the applyMappings stage,
@@ -75,22 +101,56 @@ export function extractLineItems(arrayBuffer) {
   const sheet    = workbook.Sheets[workbook.SheetNames[0]]
   const rows     = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null })
 
-  const items = []
+  const items       = []
+  const qbTotals    = []
+  const mismatches  = []
+  const sectionSums = {}
+  let   section     = null
+
   for (const row of rows) {
     const label  = row[0]
     const amount = row[1]
 
     if (typeof label !== 'string') continue
     const trimmed = label.trim()
-    if (!trimmed)                           continue
+    if (!trimmed)                                   continue
+    if (SECTION_NET_SIGN[trimmed] !== undefined)  { section = trimmed; continue }
+    if (typeof amount !== 'number')                 continue
+
+    const amountCents = Math.round(amount * 100)
+
+    const totalOf = SECTION_TOTAL_LABELS[trimmed]
+    if (totalOf) {
+      qbTotals.push({ label: trimmed, amountCents })
+      const importedCents = sectionSums[totalOf] ?? 0
+      if (importedCents !== amountCents)
+        mismatches.push(`${trimmed} is ${formatDollars(amountCents)} in QuickBooks but the accounts add up to ${formatDollars(importedCents)}`)
+      section = null
+      continue
+    }
+
+    if (trimmed === 'Net Income') {
+      qbTotals.push({ label: trimmed, amountCents })
+      const importedCents = Object.entries(sectionSums)
+        .reduce((net, [name, cents]) => net + SECTION_NET_SIGN[name] * cents, 0)
+      if (importedCents !== amountCents)
+        mismatches.push(`Net Income is ${formatDollars(amountCents)} in QuickBooks but the accounts add up to ${formatDollars(importedCents)}`)
+      continue
+    }
+
     if (trimmed.startsWith('Total for'))    continue
     if (SKIP_LABELS.has(trimmed))           continue
-    if (typeof amount !== 'number')         continue
 
-    items.push({ rawLabel: trimmed, amountCents: Math.round(amount * 100) })
+    if (section) sectionSums[section] = (sectionSums[section] ?? 0) + amountCents
+    else mismatches.push(`"${trimmed}" is not inside an Income, Cost of Goods Sold, Expenses, Other Income or Other Expenses section`)
+
+    items.push({ rawLabel: trimmed, amountCents })
   }
 
-  return items
+  if (!qbTotals.some(total => total.label === 'Net Income'))
+    mismatches.push('No Net Income row was found, so the file could not be checked against QuickBooks totals')
+
+  return { items, qbTotals, mismatches }
 }
 
 // Applies the mappings table rules to a set of raw line items.
