@@ -212,6 +212,8 @@ begin
     alter function public.resolve_pending_item(integer, text, text, boolean) security invoker;
     revoke execute on function public.upload_monthly_actuals(integer, integer, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb) from public, anon;
     revoke execute on function public.resolve_pending_item(integer, text, text, boolean) from public, anon;
+    revoke execute on function public.pending_category_for(text) from public, anon;
+    revoke execute on function public.pending_signed_cents(text, integer) from public, anon;
     grant execute on function public.pending_category_for(text) to authenticated;
     grant execute on function public.pending_signed_cents(text, integer) to authenticated;
   end if;
