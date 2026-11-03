@@ -104,11 +104,14 @@ export default function Budget2026() {
       supabase.from('actuals').select('category_slug,month,amount_cents')
         .eq('year', DASHBOARD_YEAR).eq('status', 'active'),
       supabase.from('categories').select('slug,variance_direction'),
-    ]).then(([{ data: aData, error: aErr }, { data: cData, error: cErr }]) => {
-      if (aErr || cErr) return
+      supabase.from('active_intercompany_eliminations').select('category_slug,month,amount_cents')
+        .eq('year', DASHBOARD_YEAR),
+    ]).then(([{ data: aData, error: aErr }, { data: cData, error: cErr }, { data: eData, error: eErr }]) => {
+      if (aErr || cErr || eErr) return
       const map    = {}
       const closed = new Set()
-      for (const r of aData ?? []) {
+      // Combined basis: imported actuals plus intercompany eliminations.
+      for (const r of [...aData, ...eData]) {
         const key = `${r.category_slug}-${r.month}`
         map[key]  = (map[key] ?? 0) + r.amount_cents
         closed.add(r.month - 1)
