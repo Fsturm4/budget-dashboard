@@ -1,5 +1,8 @@
+import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { supabase } from './lib/supabase.js'
 import Nav from './components/Nav.jsx'
+import Login from './pages/Login.jsx'
 import Overview from './pages/Overview.jsx'
 import MonthlyTracker from './pages/MonthlyTracker.jsx'
 import Budget2026 from './pages/Budget2026.jsx'
@@ -12,6 +15,18 @@ import Settings from './pages/Settings.jsx'
 import Help from './pages/Help.jsx'
 
 export default function App() {
+  // undefined while the saved session is being read; null when signed out.
+  const [session, setSession] = useState(undefined)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    const { data } = supabase.auth.onAuthStateChange((_event, newSession) => setSession(newSession))
+    return () => data.subscription.unsubscribe()
+  }, [])
+
+  if (session === undefined) return null
+  if (!session) return <Login />
+
   return (
     <BrowserRouter>
       <Nav />

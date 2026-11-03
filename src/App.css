@@ -47,6 +47,15 @@ body {
   color: #374151;
 }
 
+button.nav-link {
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
 .nav-link.active {
   color: #111827;
   border-bottom-color: #111827;
