@@ -106,6 +106,10 @@ export function extractLineItems(arrayBuffer) {
   const mismatches  = []
   const sectionSums = {}
   let   section     = null
+  // QB lets an account group share its section's name (e.g. a "Cost of Goods
+  // Sold" group inside the Cost of Goods Sold section). Each entry is the
+  // section's running sum when such a group opened.
+  const groupStarts = []
 
   for (const row of rows) {
     const label  = row[0]
@@ -114,12 +118,22 @@ export function extractLineItems(arrayBuffer) {
     if (typeof label !== 'string') continue
     const trimmed = label.trim()
     if (!trimmed)                                   continue
-    if (SECTION_NET_SIGN[trimmed] !== undefined)  { section = trimmed; continue }
+    if (SECTION_NET_SIGN[trimmed] !== undefined) {
+      if (trimmed === section) groupStarts.push(sectionSums[section] ?? 0)
+      else section = trimmed
+      continue
+    }
     if (typeof amount !== 'number')                 continue
 
     const amountCents = Math.round(amount * 100)
 
     const totalOf = SECTION_TOTAL_LABELS[trimmed]
+    if (totalOf && totalOf === section && groupStarts.length > 0) {
+      const groupCents = (sectionSums[section] ?? 0) - groupStarts.pop()
+      if (groupCents !== amountCents)
+        mismatches.push(`The "${section}" account group is ${formatDollars(amountCents)} in QuickBooks but its accounts add up to ${formatDollars(groupCents)}`)
+      continue
+    }
     if (totalOf) {
       qbTotals.push({ label: trimmed, amountCents })
       const importedCents = sectionSums[totalOf] ?? 0
