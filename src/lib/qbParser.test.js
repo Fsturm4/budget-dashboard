@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import * as XLSX from 'xlsx'
-import { extractLineItems, applyMappings } from './qbParser.js'
+import { extractLineItems, applyMappings, pendingActuals } from './qbParser.js'
 
 function qbFile(rows) {
   const workbook = XLSX.utils.book_new()
@@ -116,40 +116,91 @@ test('a file with no Net Income row is not imported unchecked', () => {
   assert.deepEqual(mismatches, ['No Net Income row was found, so the file could not be checked against QuickBooks totals'])
 })
 
+const SECTIONS = {
+  turf_pro_net_revenue: 'revenue', subcontract_labor: 'cogs', supplies_and_materials: 'cogs',
+  professional_fees: 'opex', vehicle_expense: 'opex', penalties_and_fees: 'opex',
+  other_income_expense: 'other',
+}
+
+const rules = pairs => pairs.map(([raw_label, category_slug]) => ({ raw_label, category_slug }))
+
 test('mapped accounts are summed by category and subtotals no longer need a mapping', () => {
   const { items } = extractLineItems(qbFile(SAMPLE_LAYOUT))
-  const mappings = [
-    ['4100 Lawn Service Income', 'revenue'], ['4190 Customer Refunds', 'revenue'],
-    ['5110 Contract Crew', 'labor'], ['5120 Seasonal Crew', 'labor'], ['5200 Granular Product', 'materials'],
+  const mappings = rules([
+    ['4100 Lawn Service Income', 'turf_pro_net_revenue'], ['4190 Customer Refunds', 'turf_pro_net_revenue'],
+    ['5110 Contract Crew', 'subcontract_labor'], ['5120 Seasonal Crew', 'subcontract_labor'], ['5200 Granular Product', 'supplies_and_materials'],
     ['6610 Bookkeeping Fees', 'professional_fees'],
-    ['6700 Truck Costs', 'vehicle'], ['6710 Diesel', 'vehicle'], ['6720 Tires', 'vehicle'],
-    ['7010 Bank Interest', 'other_income'], ['8010 Late Fees', 'other_expense'],
-  ].map(([raw_label, category_slug]) => ({ raw_label, category_slug }))
+    ['6700 Truck Costs', 'vehicle_expense'], ['6710 Diesel', 'vehicle_expense'], ['6720 Tires', 'vehicle_expense'],
+    ['7010 Bank Interest', 'other_income_expense'], ['8010 Late Fees', 'penalties_and_fees'],
+  ])
 
-  const result = applyMappings(items, mappings)
+  const result = applyMappings(items, mappings, SECTIONS)
 
-  assert.deepEqual(result.unmappedLabels, [])
+  assert.deepEqual(result.unmappedItems, [])
   assert.deepEqual(Object.fromEntries(result.mapped.map(r => [r.categorySlug, r.amountCents])), {
-    revenue: 808725, labor: 145000, materials: 96000, professional_fees: 42500,
-    vehicle: 35000, other_income: 315, other_expense: 1800,
+    turf_pro_net_revenue: 808725, subcontract_labor: 145000, supplies_and_materials: 96000,
+    professional_fees: 42500, vehicle_expense: 35000, other_income_expense: 315,
+    penalties_and_fees: 1800,  // Other Expense mapped to an operating category keeps its sign
   })
 })
 
-test('a genuinely unmapped account still blocks the import', () => {
-  const rows = [
-    ...HEADER,
-    ['Expenses'],
-    ['6610 Bookkeeping Fees', 425],
-    ['8999 Unassigned Expense', 233.1],
-    ['Total Expenses', 658.1],
-    ['Net Income', -658.1],
-  ]
-  const { items, mismatches } = extractLineItems(qbFile(rows))
-  const result = applyMappings(items, [{ raw_label: '6610 Bookkeeping Fees', category_slug: 'professional_fees' }])
+test('an Other Expense mapped into the signed Other bucket is subtracted', () => {
+  const { items } = extractLineItems(qbFile(SAMPLE_LAYOUT))
+  const mappings = rules([['7010 Bank Interest', 'other_income_expense'], ['8010 Late Fees', 'other_income_expense']])
+
+  const { mapped } = applyMappings(items.filter(i => i.qbSection.startsWith('Other')), mappings, SECTIONS)
+
+  assert.deepEqual(mapped, [{ categorySlug: 'other_income_expense', amountCents: 315 - 1800 }])
+})
+
+const PENDING_LAYOUT = [
+  ...HEADER,
+  ['Income'],
+  ['4100 Lawn Service Income', 900],
+  ['4990 Unidentified Deposit', 15],
+  ['Total Income', 915],
+  ['Expenses'],
+  ['6610 Bookkeeping Fees', 300],
+  ['6990 Unassigned Charge', 40.5],
+  ['Total Expenses', 340.5],
+  ['Other Income'],
+  ['7010 Bank Interest', 2],
+  ['Total Other Income', 2],
+  ['Other Expenses'],
+  ['8999 Unassigned Expense', 612.4],
+  ['Total Other Expenses', 612.4],
+  ['Net Income', -35.9],
+]
+const PENDING_RULES = rules([['4100 Lawn Service Income', 'turf_pro_net_revenue'], ['6610 Bookkeeping Fees', 'professional_fees'], ['7010 Bank Interest', 'other_income_expense']])
+
+test('an unmapped account is reported with its section, never silently counted', () => {
+  const { items, mismatches } = extractLineItems(qbFile(PENDING_LAYOUT))
+
+  const result = applyMappings(items, PENDING_RULES, SECTIONS)
 
   assert.deepEqual(mismatches, [])
-  assert.equal(result.mapped, null)
-  assert.deepEqual(result.unmappedLabels, ['8999 Unassigned Expense'])
+  assert.deepEqual(result.unmappedItems, [
+    { rawLabel: '4990 Unidentified Deposit', amountCents: 1500,  qbSection: 'Income' },
+    { rawLabel: '6990 Unassigned Charge',    amountCents: 4050,  qbSection: 'Expenses' },
+    { rawLabel: '8999 Unassigned Expense',   amountCents: 61240, qbSection: 'Other Expenses' },
+  ])
+  assert.ok(result.mapped.every(row => !row.categorySlug.startsWith('pending_')))
+})
+
+test('approved pending accounts land in their own section and keep Net Income equal to QuickBooks', () => {
+  const { items } = extractLineItems(qbFile(PENDING_LAYOUT))
+  const { mapped, unmappedItems } = applyMappings(items, PENDING_RULES, SECTIONS)
+
+  const pending = pendingActuals(unmappedItems)
+  assert.deepEqual(pending, [
+    { categorySlug: 'pending_revenue', amountCents: 1500 },
+    { categorySlug: 'pending_opex',    amountCents: 4050 },
+    { categorySlug: 'pending_other',   amountCents: -61240 },
+  ])
+
+  const sectionOf = slug => slug.startsWith('pending_') ? slug.slice('pending_'.length) : SECTIONS[slug]
+  const sum = section => [...mapped, ...pending].filter(r => sectionOf(r.categorySlug) === section).reduce((s, r) => s + r.amountCents, 0)
+  assert.equal(sum('revenue') - sum('cogs') - sum('opex') + sum('other'), -3590)  // QuickBooks Net Income
 })
 
 // Same layout as a real export where an account group shares its section's

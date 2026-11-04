@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase.js'
 import { formatDollars } from '../lib/money.js'
 import { COMPANY_LABELS, MONTH_LABELS } from '../lib/config.js'
 import { TABLE_ROWS } from '../lib/trackerRows.js'
+import { QB_SECTION_TO_DASHBOARD } from '../lib/qbParser.js'
 
 const CATEGORY_LABELS = Object.fromEntries(
   TABLE_ROWS.filter(r => r.type === 'input').map(r => [r.slug, r.label])
@@ -50,6 +51,117 @@ function formatEventDate(isoString) {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: 'numeric', minute: '2-digit',
   })
+}
+
+// ── pending review ────────────────────────────────────────────────────────────
+
+// Accounts imported as "Uncategorized – Pending Review", each reclassified on
+// its own into a category in the same section by resolve_pending_item.
+function PendingReview() {
+  const [items,      setItems]      = useState([])
+  const [categories, setCategories] = useState([])
+  const [openId,     setOpenId]     = useState(null)
+  const [slug,       setSlug]       = useState('')
+  const [reason,     setReason]     = useState('')
+  const [saveRule,   setSaveRule]   = useState(false)
+  const [saving,     setSaving]     = useState(false)
+  const [saveError,  setSaveError]  = useState(null)
+
+  function load() {
+    Promise.all([
+      supabase.from('pending_items').select('*').eq('status', 'pending').order('created_at'),
+      supabase.from('categories').select('slug, display_name, section').order('display_order'),
+    ]).then(([itemsRes, catRes]) => {
+      setItems(itemsRes.data ?? [])
+      setCategories(catRes.data ?? [])
+    })
+  }
+  useEffect(load, [])
+
+  function openForm(id) {
+    setOpenId(id)
+    setSlug('')
+    setReason('')
+    setSaveRule(false)
+    setSaveError(null)
+  }
+
+  // Same-section categories; revenue only into the account's own company.
+  function choicesFor(item) {
+    const section = QB_SECTION_TO_DASHBOARD[item.qb_section]
+    return categories.filter(c =>
+      c.section === section &&
+      !c.slug.startsWith('pending_') &&
+      (section !== 'revenue' || c.slug === `${item.company}_net_revenue`)
+    )
+  }
+
+  async function handleReclassify(item) {
+    setSaving(true)
+    setSaveError(null)
+    const { error } = await supabase.rpc('resolve_pending_item', {
+      p_pending_item_id: item.id,
+      p_category_slug:   slug,
+      p_reason:          reason.trim(),
+      p_save_mapping:    saveRule,
+    })
+    setSaving(false)
+    if (error) {
+      setSaveError(`Reclassification failed: ${error.message}. Nothing was changed.`)
+      return
+    }
+    setOpenId(null)
+    load()
+  }
+
+  if (items.length === 0) return null
+
+  return (
+    <div className="audit-unmapped">
+      <p className="audit-unmapped-heading">
+        Pending Review — {items.length} QuickBooks account{items.length !== 1 ? 's' : ''} imported
+        without a category. Each is counted in its own QuickBooks section until reclassified.
+      </p>
+      <ul className="audit-unmapped-list">
+        {items.map(item => (
+          <li key={item.id}>
+            {COMPANY_LABELS[item.company]} — {MONTH_LABELS[item.month - 1]} {item.year}:{' '}
+            <code>{item.raw_label}</code> ({item.qb_section}) {formatDollars(item.amount_cents)}{' '}
+            {openId !== item.id && (
+              <button className="audit-expand-btn" onClick={() => openForm(item.id)}>Reclassify</button>
+            )}
+            {openId === item.id && (
+              <div>
+                <select value={slug} onChange={e => setSlug(e.target.value)}>
+                  <option value="">Select category…</option>
+                  {choicesFor(item).map(c => <option key={c.slug} value={c.slug}>{c.display_name}</option>)}
+                </select>{' '}
+                <input
+                  type="text"
+                  placeholder="Reason (required)"
+                  value={reason}
+                  onChange={e => setReason(e.target.value)}
+                />{' '}
+                <label>
+                  <input type="checkbox" checked={saveRule} onChange={e => setSaveRule(e.target.checked)} />
+                  {' '}Also map this label for future uploads
+                </label>{' '}
+                <button
+                  className="audit-correct-btn"
+                  disabled={saving || !slug || !reason.trim()}
+                  onClick={() => handleReclassify(item)}
+                >
+                  Reclassify
+                </button>{' '}
+                <button className="audit-expand-btn" disabled={saving} onClick={() => setOpenId(null)}>Cancel</button>
+                {saveError && <p className="audit-error">{saveError}</p>}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
 }
 
 // ── page ──────────────────────────────────────────────────────────────────────
@@ -120,6 +232,7 @@ export default function AuditLog() {
   return (
     <div className="page audit-page">
       <h1>Audit Log</h1>
+      <PendingReview />
       <p className="audit-subtitle">
         {events.length} event{events.length !== 1 ? 's' : ''} — newest first
       </p>
@@ -275,6 +388,7 @@ export default function AuditLog() {
                       <p className="audit-raw-heading">
                         Raw QuickBooks line items extracted before mapping
                         {item.status === 'failed_unmapped' ? ' — unmapped labels highlighted' : ''}
+                        {item.status === 'success' && item.unmapped_labels?.length > 0 ? ' — Pending Review accounts highlighted' : ''}
                       </p>
                       <table className="audit-raw-table">
                         <thead>
@@ -285,15 +399,15 @@ export default function AuditLog() {
                         </thead>
                         <tbody>
                           {rawItems.map((raw, i) => {
-                            const isUnmapped =
-                              item.status === 'failed_unmapped' &&
-                              item.unmapped_labels?.includes(raw.raw_label)
+                            const isUnmapped = item.unmapped_labels?.includes(raw.raw_label)
                             return (
                               <tr key={i} className={isUnmapped ? 'audit-raw-row--unmapped' : ''}>
                                 <td>
                                   <code>{raw.raw_label}</code>
                                   {isUnmapped && (
-                                    <span className="audit-raw-unmapped-tag"> unmapped</span>
+                                    <span className="audit-raw-unmapped-tag">
+                                      {item.status === 'success' ? ' pending review' : ' unmapped'}
+                                    </span>
                                   )}
                                 </td>
                                 <td className="audit-raw-num">
