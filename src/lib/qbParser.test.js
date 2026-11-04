@@ -202,3 +202,57 @@ test('approved pending accounts land in their own section and keep Net Income eq
   const sum = section => [...mapped, ...pending].filter(r => sectionOf(r.categorySlug) === section).reduce((s, r) => s + r.amountCents, 0)
   assert.equal(sum('revenue') - sum('cogs') - sum('opex') + sum('other'), -3590)  // QuickBooks Net Income
 })
+
+// Same layout as a real export where an account group shares its section's
+// name: a "Cost of Goods Sold" group (holding a flags account) inside the
+// Cost of Goods Sold section, each with its own "Total Cost of Goods Sold".
+const NESTED_GROUP_LAYOUT = [
+  ...HEADER,
+  ['Income'],
+  ['4100 Lawn Service Income', 9200],
+  ['Total Income', 9200],
+  ['Cost of Goods Sold'],
+  ['5110 Contract Crew', 3400],
+  ['Cost of Goods Sold'],
+  ['5210 Marking Flags', 410],
+  ['Total Cost of Goods Sold', 410],
+  ['Total Cost of Goods Sold', 3810],
+  ['Gross Profit', 5390],
+  ['Expenses'],
+  ['6610 Bookkeeping Fees', 120],
+  ['Total Expenses', 120],
+  ['Net Operating Income', 5270],
+  ['Other Expenses'],
+  ['8010 Late Fees', 25],
+  ['Total Other Expenses', 25],
+  ['Net Other Income', -25],
+  ['Net Income', 5245],
+]
+
+test('an account group named like its section reconciles and is counted once', () => {
+  const { items, qbTotals, mismatches } = extractLineItems(qbFile(NESTED_GROUP_LAYOUT))
+
+  assert.deepEqual(mismatches, [])
+  assert.deepEqual(items.map(i => [i.rawLabel, i.amountCents]), [
+    ['4100 Lawn Service Income', 920000],
+    ['5110 Contract Crew', 340000],
+    ['5210 Marking Flags', 41000],
+    ['6610 Bookkeeping Fees', 12000],
+    ['8010 Late Fees', 2500],
+  ])
+  assert.deepEqual(qbTotals.map(t => [t.label, t.amountCents]), [
+    ['Total Income', 920000],
+    ['Total Cost of Goods Sold', 381000],
+    ['Total Expenses', 12000],
+    ['Total Other Expenses', 2500],
+    ['Net Income', 524500],
+  ])
+})
+
+test('a wrong account-group subtotal still fails reconciliation', () => {
+  const rows = NESTED_GROUP_LAYOUT.map((row, i) => i === NESTED_GROUP_LAYOUT.findIndex(r => r[0] === 'Total Cost of Goods Sold') ? [row[0], 400] : row)
+
+  const { mismatches } = extractLineItems(qbFile(rows))
+
+  assert.deepEqual(mismatches, ['The "Cost of Goods Sold" account group is $400.00 in QuickBooks but its accounts add up to $410.00'])
+})
