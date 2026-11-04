@@ -27,7 +27,7 @@ do $$ begin
   assert pg_temp.active_cents('turf_pro', 'turf_pro_net_revenue') = 100000, 'six-argument upload wrote Turf Pro revenue';
   assert pg_temp.active_cents('greenace', 'greenace_net_revenue') = 50000, 'six-argument upload wrote GreenAce revenue';
   assert (select count(*) from uploads where month = 12 and unmapped_labels is not null) = 0, 'no pending labels recorded';
-  assert (select count(*) from pending_items) = 0, 'no pending items written';
+  assert (select count(*) from pending_items where year = 2026 and month = 12) = 0, 'no pending items written';
 end $$;
 
 -- 2. A second import of the same month fails and writes nothing.
@@ -55,7 +55,7 @@ select pg_temp.expect_error($$
 $$, 'Pending Review totals do not match%');
 do $$ begin
   assert (select count(*) from uploads where month = 12) = 0, 'rejected pending uploads wrote nothing';
-  assert (select count(*) from pending_items) = 0, 'rejected pending uploads wrote no pending items';
+  assert (select count(*) from pending_items where year = 2026 and month = 12) = 0, 'rejected pending uploads wrote no pending items';
 end $$;
 
 -- 5. Pending accounts import into their own section, signed for the Other bucket.
@@ -69,7 +69,7 @@ select upload_monthly_actuals(2026, 12,
 do $$ begin
   assert pg_temp.active_cents('greenace', 'pending_other') = -61240, 'unassigned expense held negative in Other';
   assert pg_temp.active_cents('turf_pro', 'pending_opex') = 4050, 'unknown expense held in operating expenses';
-  assert (select count(*) from pending_items where status = 'pending') = 2, 'two pending items';
+  assert (select count(*) from pending_items where status = 'pending' and year = 2026 and month = 12) = 2, 'two pending items';
   assert (select unmapped_labels from uploads where month = 12 and company = 'greenace') = array['8999 Unassigned Expense'], 'GreenAce upload lists its pending label';
   assert (select unmapped_labels from uploads where month = 12 and company = 'turf_pro') = array['6990 Unassigned Charge'], 'Turf Pro upload lists its pending label';
 end $$;

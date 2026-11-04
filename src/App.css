@@ -1520,3 +1520,15 @@ button.nav-link {
   color: #9ca3af;
   line-height: 1.5;
 }
+
+.audit-intercompany {
+  margin: 0 1rem 0.75rem;
+}
+
+.audit-intercompany-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.8125rem;
+}

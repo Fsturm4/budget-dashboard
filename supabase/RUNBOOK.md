@@ -35,6 +35,15 @@ Pull-request previews use the same Supabase project as the live site, so anythin
 
 Steps 3–4 and 5–9 are independent; either group can go first. Each migration detects the other and keeps the same rules.
 
+**Intercompany reconciliation** (after steps 1–9, since it needs the access-control migration):
+
+| # | Step | Who | Effect on figures |
+|---|------|-----|-------------------|
+| 10 | Snapshot, then apply `migrations/20261105000000_intercompany_reconciliation.sql` | Claude, on approval | None: new empty tables |
+| 11 | Merge the intercompany PR | Claude, on approval | None until a transfer is recorded |
+| 12 | Migrate June: two restoring corrections plus one transfer per check, in one transaction that aborts unless every month's combined total per category is unchanged. The script holds real figures, so it is kept outside this repository | Claude, on approval | Company views return to QuickBooks; combined unchanged |
+| 13 | Record each month's transfers as months are imported | Owner or Claude, on approval | Combined revenue and COGS each fall by the transfer; profit unchanged |
+
 ## Creating your Supabase sign-in (step 5)
 
 1. Open the Supabase dashboard and select the project.
@@ -59,10 +68,16 @@ To reset a forgotten password, use the same Users page.
 - The security advisor no longer reports RLS or anonymous-access findings.
 - The owner reloads the signed-in dashboard and checks Overview, Upload preview and Audit Log.
 
+**After the intercompany migration:**
+- Table counts are unchanged; three new empty tables.
+- `anon` is denied on the new tables and functions; the signed-in owner can read the tables but write them only through the functions.
+- The security advisor may list the four intercompany functions as callable by signed-in users. That is intended: each checks the allowlist first.
+
 ## Rollback
 
 - **Pending Review:** `rollback/20261103000000_pending_review_down.sql` restores the original structure. It refuses once any account has been imported as Pending Review, because rolling back would discard records; from then, fix forward.
 - **Access control:** `rollback/20261104000000_dashboard_access_control_down.sql` restores the previous open access immediately, without touching financial data. Then fix and re-apply.
+- **Intercompany:** `rollback/20261105000000_intercompany_reconciliation_down.sql` removes it while no transfer or reviewed month exists. After that, void a transfer to reverse both its eliminations together; June's restoring corrections can be reversed with the correction workflow.
 - **Frontend:** redeploy the previous build from Netlify's Deploys page, or revert the merge on GitHub.
 
 ## Adding a person later

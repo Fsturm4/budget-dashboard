@@ -13,7 +13,10 @@ const L = 'lower_is_better'
 
 // ── computation ───────────────────────────────────────────────────────────────
 
-function computeRows(actuals, budgetRows, month, companyMode) {
+// Combined view only: each intercompany elimination is its own line just above the section total.
+const ELIMINATION_BEFORE = { total_rev: 'revenue', total_cogs: 'cogs' }
+
+function computeRows(actuals, eliminations, budgetRows, month, companyMode) {
   // Monthly budget cents per slug for the selected month
   const budgetBySlug = new Map(
     budgetRows.map(b => [b.category_slug, b[`${MONTH_COLS[month - 1]}_cents`] ?? 0])
@@ -58,6 +61,16 @@ function computeRows(actuals, budgetRows, month, companyMode) {
     sa[section] = slugs.reduce((sum, sl) => sum + getActual(sl), 0)
   }
 
+  const elim = { revenue: 0, cogs: 0 }
+  if (companyMode === 'combined') {
+    for (const row of eliminations) {
+      const section = SECTION_SLUGS.revenue.includes(row.category_slug) ? 'revenue' : 'cogs'
+      elim[section] += row.amount_cents
+    }
+  }
+  sa.revenue += elim.revenue
+  sa.cogs    += elim.cogs
+
   // Section budget totals (null when not meaningful for current mode).
   // In combined mode: full combined budget for all sections.
   // In per-company mode: only the one company's revenue budget is meaningful.
@@ -92,11 +105,14 @@ function computeRows(actuals, budgetRows, month, companyMode) {
     net_income:  { actual: niActual,    budget: niBudget    },
   }
 
-  return TABLE_ROWS.map((row, idx) => {
+  return TABLE_ROWS.flatMap((row, idx) => {
     if (row.type === 'section') return { ...row, idx }
     if (row.type === 'derived') {
       const d = derivedMap[row.key]
-      return { ...row, idx, actual: d.actual, budget: d.budget }
+      const derivedRow = { ...row, idx, actual: d.actual, budget: d.budget }
+      const section = ELIMINATION_BEFORE[row.key]
+      if (!section || elim[section] === 0) return derivedRow
+      return [{ type: 'elimination', idx: `${idx}-elimination`, label: 'Intercompany elimination', actual: elim[section], budget: null }, derivedRow]
     }
     // input row
     const showBudget = slugShowsBudget(row.slug)
@@ -130,6 +146,7 @@ export default function MonthlyTracker() {
   const [month,       setMonth]       = useState('1')
   const [companyMode, setCompanyMode] = useState('combined')
   const [actuals,     setActuals]     = useState([])
+  const [eliminations, setEliminations] = useState([])
   const [budgetRows,  setBudgetRows]  = useState([])
   const [hasActuals,  setHasActuals]  = useState(false)
   const [loading,     setLoading]     = useState(true)
@@ -150,28 +167,35 @@ export default function MonthlyTracker() {
   useEffect(() => {
     setLoading(true)
     setFetchError(null)
-    supabase
-      .from('actuals')
-      .select('category_slug, company, amount_cents')
-      .eq('year',   DASHBOARD_YEAR)
-      .eq('month',  parseInt(month))
-      .eq('status', ACTUALS_STATUS.ACTIVE)
-      .then(({ data, error }) => {
-        if (error) {
-          setFetchError('Could not load actuals. Check your connection and try refreshing.')
-          setLoading(false)
-          return
-        }
-        setActuals(data ?? [])
-        setHasActuals((data ?? []).length > 0)
+    Promise.all([
+      supabase
+        .from('actuals')
+        .select('category_slug, company, amount_cents')
+        .eq('year',   DASHBOARD_YEAR)
+        .eq('month',  parseInt(month))
+        .eq('status', ACTUALS_STATUS.ACTIVE),
+      supabase
+        .from('active_intercompany_eliminations')
+        .select('category_slug, amount_cents')
+        .eq('year',  DASHBOARD_YEAR)
+        .eq('month', parseInt(month)),
+    ]).then(([{ data, error }, elimRes]) => {
+      if (error || elimRes.error) {
+        setFetchError('Could not load actuals. Check your connection and try refreshing.')
         setLoading(false)
-      })
+        return
+      }
+      setActuals(data ?? [])
+      setEliminations(elimRes.data)
+      setHasActuals((data ?? []).length > 0)
+      setLoading(false)
+    })
   }, [month])
 
   // Rows are computed client-side from fetched data.
   // Company mode change does not trigger a fetch — same actuals, different aggregation.
   const rows = (!loading && budgetRows.length > 0)
-    ? computeRows(actuals, budgetRows, parseInt(month), companyMode)
+    ? computeRows(actuals, eliminations, budgetRows, parseInt(month), companyMode)
     : []
 
   const monthLabel = MONTH_LABELS[parseInt(month) - 1]

@@ -192,6 +192,7 @@ export default function Overview() {
   const [loading,    setLoading]    = useState(true)
   const [fetchError, setFetchError] = useState(null)
   const [pendingItems, setPendingItems] = useState([])
+  const [unreviewedMonths, setUnreviewedMonths] = useState([])
 
   // Separate from the dashboard load: if this fails, the notice is simply not shown.
   useEffect(() => {
@@ -200,6 +201,21 @@ export default function Overview() {
       .select('amount_cents')
       .eq('status', 'pending')
       .then(({ data }) => setPendingItems(data ?? []))
+  }, [])
+
+  // Uploaded months with no intercompany transfer recorded and not marked "None this month".
+  // Separate from the dashboard load: if this fails, the notice is simply not shown.
+  useEffect(() => {
+    Promise.all([
+      supabase.from('actuals').select('month').eq('year', DASHBOARD_YEAR).eq('status', ACTUALS_STATUS.ACTIVE),
+      supabase.from('intercompany_transfers').select('month').eq('year', DASHBOARD_YEAR).neq('status', 'voided'),
+      supabase.from('intercompany_reviewed_months').select('month').eq('year', DASHBOARD_YEAR),
+    ]).then(([actualsRes, transfersRes, reviewedRes]) => {
+      if (actualsRes.error || transfersRes.error || reviewedRes.error) return
+      const reviewed = new Set([...transfersRes.data, ...reviewedRes.data].map(r => r.month))
+      const uploaded = [...new Set(actualsRes.data.map(r => r.month))].sort((a, b) => a - b)
+      setUnreviewedMonths(uploaded.filter(m => !reviewed.has(m)))
+    })
   }, [])
 
   // Single fetch on mount — three parallel queries, all required before render.
@@ -212,19 +228,24 @@ export default function Overview() {
         .eq('year', DASHBOARD_YEAR)
         .eq('status', ACTUALS_STATUS.ACTIVE),
       supabase
+        .from('active_intercompany_eliminations')
+        .select('category_slug, month, amount_cents')
+        .eq('year', DASHBOARD_YEAR),
+      supabase
         .from('budget')
         .select('*')
         .eq('year', DASHBOARD_YEAR),
       supabase
         .from('categories')
         .select('slug, section'),
-    ]).then(([ar, br, cr]) => {
-      if (ar.error || br.error || cr.error) {
+    ]).then(([ar, er, br, cr]) => {
+      if (ar.error || er.error || br.error || cr.error) {
         setFetchError('Could not load dashboard data. Check your connection and try refreshing.')
         setLoading(false)
         return
       }
-      setDashData(buildDashboard(ar.data, br.data, cr.data))
+      // Combined figures: imported actuals plus intercompany eliminations.
+      setDashData(buildDashboard([...ar.data, ...er.data], br.data, cr.data))
       setLoading(false)
     })
   }, [])
@@ -245,6 +266,12 @@ export default function Overview() {
           {pendingItems.length} QuickBooks account{pendingItems.length !== 1 ? 's' : ''} pending review
           ({formatDollars(pendingItems.reduce((sum, item) => sum + item.amount_cents, 0))}) —{' '}
           <a href="/audit">reclassify in the Audit Log</a>
+        </p>
+      )}
+      {unreviewedMonths.length > 0 && (
+        <p className="overview-context">
+          Intercompany transfers not reviewed for {unreviewedMonths.map(m => MONTH_LABELS[m - 1]).join(', ')} —{' '}
+          <a href="/audit">review in the Audit Log</a>
         </p>
       )}
 

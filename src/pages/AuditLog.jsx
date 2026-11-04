@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase.js'
 import { formatDollars } from '../lib/money.js'
 import { COMPANY_LABELS, MONTH_LABELS } from '../lib/config.js'
 import { TABLE_ROWS } from '../lib/trackerRows.js'
+import Intercompany from '../components/Intercompany.jsx'
 import { QB_SECTION_TO_DASHBOARD } from '../lib/qbParser.js'
 
 const CATEGORY_LABELS = Object.fromEntries(
@@ -233,6 +234,7 @@ export default function AuditLog() {
     <div className="page audit-page">
       <h1>Audit Log</h1>
       <PendingReview />
+      <Intercompany />
       <p className="audit-subtitle">
         {events.length} event{events.length !== 1 ? 's' : ''} — newest first
       </p>
