@@ -11,6 +11,7 @@ const PRIMARY_LINKS = [
 
 const SECONDARY_LINKS = [
   { to: '/upload', label: 'Upload',    end: false },
+  { to: '/reconcile', label: 'Reconcile', end: false },
   { to: '/audit',  label: 'Audit Log', end: false },
 ]
 

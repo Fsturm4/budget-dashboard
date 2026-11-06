@@ -11,6 +11,7 @@ import EmployeeAnalysis from './pages/EmployeeAnalysis.jsx'
 import Upload from './pages/Upload.jsx'
 import AuditLog from './pages/AuditLog.jsx'
 import Correction from './pages/Correction.jsx'
+import Reconcile from './pages/Reconcile.jsx'
 import Settings from './pages/Settings.jsx'
 import Help from './pages/Help.jsx'
 
@@ -40,6 +41,7 @@ export default function App() {
           <Route path="/upload"       element={<Upload />} />
           <Route path="/audit"        element={<AuditLog />} />
           <Route path="/correction"   element={<Correction />} />
+          <Route path="/reconcile"    element={<Reconcile />} />
           <Route path="/settings"     element={<Settings />} />
           <Route path="/help"         element={<Help />} />
         </Routes>

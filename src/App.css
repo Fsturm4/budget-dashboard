@@ -1582,3 +1582,38 @@ button.nav-link {
 }
 
 .export-note { margin: 0; font-size: 0.75rem; color: #6b7280; }
+
+/* Reconcile / Replace Actuals */
+.rc-page { max-width: 1100px; }
+.rc-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 20px; margin: 16px 0; overflow-x: auto; }
+.rc-card h3 { margin: 0 0 8px; font-size: 1rem; }
+.rc-card--stop { border-left: 4px solid #d97706; }
+.rc-muted { color: #6b7280; font-size: 0.875rem; }
+.rc-field { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; font-size: 0.875rem; max-width: 520px; }
+.rc-field select, .rc-field input[type="text"], .rc-restore input { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font: inherit; }
+.rc-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; margin: 8px 0; }
+.rc-table th { text-align: left; font-weight: 600; color: #374151; border-bottom: 1px solid #e5e7eb; padding: 6px 8px; white-space: nowrap; }
+.rc-table td { padding: 6px 8px; border-bottom: 1px solid #f3f4f6; font-variant-numeric: tabular-nums; }
+.rc-table th:nth-child(n+5), .rc-table td:nth-child(n+5) { text-align: right; }
+.rc-summary .rc-table th:nth-child(n+2), .rc-summary .rc-table td:nth-child(n+2) { text-align: right; }
+.rc-summaries { display: flex; gap: 24px; flex-wrap: wrap; }
+.rc-summary { flex: 1 1 380px; }
+.rc-summary h4 { margin: 12px 0 0; font-size: 0.875rem; }
+.rc-row--alert td { background: #fef2f2; color: #b91c1c; font-weight: 600; }
+.rc-up { color: #15803d; } .rc-down { color: #b91c1c; } .rc-zero { color: #9ca3af; }
+.rc-flag { display: block; font-size: 0.75rem; color: #b45309; }
+.rc-alert { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; padding: 8px 12px; border-radius: 6px; font-size: 0.875rem; }
+.rc-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; padding: 8px 12px; border-radius: 6px; font-size: 0.875rem; }
+.rc-check { display: flex; gap: 8px; align-items: flex-start; font-size: 0.875rem; margin: 8px 0; }
+.rc-files { list-style: none; padding: 0; font-size: 0.875rem; }
+.rc-files li { padding: 4px 0; }
+.rc-blockers { color: #6b7280; font-size: 0.8125rem; margin: 8px 0; }
+.rc-primary { background: #111827; color: #fff; border: 0; border-radius: 6px; padding: 8px 16px; cursor: pointer; font: inherit; }
+.rc-primary:disabled { background: #d1d5db; cursor: not-allowed; }
+.rc-secondary, .rc-restore button { border: 1px solid #d1d5db; background: #fff; border-radius: 6px; padding: 6px 12px; cursor: pointer; font: inherit; margin-right: 8px; }
+.rc-link { background: none; border: 0; color: #2563eb; cursor: pointer; margin-left: 8px; font: inherit; }
+.rc-restore { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.rc-restore input { flex: 1 1 260px; }
+.rc-history summary { cursor: pointer; font-size: 0.875rem; }
+.rc-badge { background: #dcfce7; color: #15803d; padding: 1px 8px; border-radius: 10px; font-size: 0.75rem; }
+.rc-badge--restored { background: #e5e7eb; color: #374151; }

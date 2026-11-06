@@ -16,6 +16,7 @@ const CATEGORY_LABELS = Object.fromEntries(
 function eventLabel(item) {
   if (item._type === 'correction')               return 'Correction'
   if (item.source === 'qb_initialization')       return 'Initialization'
+  if (item.source === 'reconciliation')          return 'Reconciliation'
   if (item.status === 'success')                 return 'Success'
   if (item.status === 'failed_unmapped')         return 'Failed — Unmapped Items'
   if (item.status === 'failed_duplicate')        return 'Failed — Duplicate'

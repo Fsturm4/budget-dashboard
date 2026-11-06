@@ -73,11 +73,27 @@ To reset a forgotten password, use the same Users page.
 - `anon` is denied on the new tables and functions; the signed-in owner can read the tables but write them only through the functions.
 - The security advisor may list the four intercompany functions as callable by signed-in users. That is intended: each checks the allowlist first.
 
+**After the reconcile migration:**
+- Four new empty tables (`actuals_replacements`, `_months`, `_lines`, `_mappings`); every existing table has the same row counts.
+- `uploads.source` also accepts `'reconciliation'`.
+- `anon` is denied on the new tables and functions; the signed-in owner can read the tables but change them only through `replace_company_actuals` and `restore_actuals_replacement`.
+- Run `tests/reconcile_replace_test.sql` on the local copy first. Do not run it against production (it rolls back, but uses made-up months).
+
+## Reconciling a corrected QuickBooks report
+
+Reconcile (top navigation) replaces one company's stored figures for existing months with a corrected QuickBooks P&L:
+1. Choose the company. Export one whole-month P&L per month from QuickBooks (.xlsx, the same file the Upload page takes) and add them all at once. A report covering several months, or part of a month, is rejected: the importer reads one column, so months cannot be split without estimating.
+2. Decide every account listed under "Accounts that need your decision": map it to a category (saved as a mapping for that company) or hold it in Pending Review. Nothing is guessed, and nothing is saved yet.
+3. Review each month's differences, the effect on totals and margins (company and combined), and any highlighted net income change or earlier correction. Tick each review box, enter a reason, and confirm.
+4. The database recomputes the figures, checks them against QuickBooks' Net Income and against the stored month, and replaces all months or none. Old rows stay as `superseded`.
+5. To undo, open Replacement history, choose Restore previous version, and give a reason. Restoring is refused if a later change touched the same months; restore or review that first.
+
 ## Rollback
 
 - **Pending Review:** `rollback/20261103000000_pending_review_down.sql` restores the original structure. It refuses once any account has been imported as Pending Review, because rolling back would discard records; from then, fix forward.
 - **Access control:** `rollback/20261104000000_dashboard_access_control_down.sql` restores the previous open access immediately, without touching financial data. Then fix and re-apply.
 - **Intercompany:** `rollback/20261105000000_intercompany_reconciliation_down.sql` removes it while no transfer or reviewed month exists. After that, void a transfer to reverse both its eliminations together; June's restoring corrections can be reversed with the correction workflow.
+- **Reconcile:** `rollback/20261106000000_reconcile_replace_actuals_down.sql` removes it while no replacement exists. After that, restore replacements from the Reconcile page instead (history is never deleted).
 - **Frontend:** redeploy the previous build from Netlify's Deploys page, or revert the merge on GitHub.
 
 ## Adding a person later

@@ -17,7 +17,7 @@ const L = 'lower_is_better'
 // Combined view only: each intercompany elimination is its own line just above the section total.
 const ELIMINATION_BEFORE = { total_rev: 'revenue', total_cogs: 'cogs' }
 
-function computeRows(actuals, eliminations, budgetRows, month, companyMode) {
+export function computeRows(actuals, eliminations, budgetRows, month, companyMode) {
   // Monthly budget cents per slug for the selected month
   const budgetBySlug = new Map(
     budgetRows.map(b => [b.category_slug, b[`${MONTH_COLS[month - 1]}_cents`] ?? 0])

@@ -23,7 +23,7 @@ const VIEW_LABEL = {
   greenace: 'GreenAce only',
 }
 const VIEW_SLUG    = { combined: 'combined', turf_pro: 'turf-pro', greenace: 'greenace' }
-const SOURCE_LABEL = { quickbooks_upload: 'QuickBooks upload', qb_initialization: 'Initialization' }
+const SOURCE_LABEL = { quickbooks_upload: 'QuickBooks upload', qb_initialization: 'Initialization', reconciliation: 'QuickBooks reconciliation' }
 
 const money     = cents => ({ t: 'n', v: cents / 100, z: MONEY })
 const monthName = m => `${MONTH_LABELS[m - 1]} ${DASHBOARD_YEAR}`
