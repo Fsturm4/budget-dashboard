@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { formatDollars } from '../lib/money.js'
 import { DASHBOARD_YEAR, MONTH_LABELS, VARIANCE_THRESHOLD_PCT, ACTUALS_STATUS } from '../lib/config.js'
+import ExportMenu from '../components/ExportMenu.jsx'
 
 const MONTH_COLS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
 
@@ -226,6 +227,8 @@ export default function MonthlyTracker() {
             </button>
           ))}
         </div>
+
+        <ExportMenu month={month} companyMode={companyMode} computeRows={computeRows} />
       </div>
 
       {fetchError && <p className="tracker-error">{fetchError}</p>}
