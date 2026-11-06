@@ -271,8 +271,11 @@ begin
       raise exception 'Month %: a figure that was set by an earlier correction would change and was not acknowledged.', v_month;
     end if;
 
-    select array_agg(id) into v_old_pending from pending_items
-     where company = p_company and year = p_year and month = v_month and status = 'pending';
+    -- Pending Review accounts the new report holds unchanged (same account, section and amount)
+    -- are left exactly as they are; only ones that changed or disappeared are closed.
+    select array_agg(p.id) into v_old_pending from pending_items p
+     where p.company = p_company and p.year = p_year and p.month = v_month and p.status = 'pending'
+       and not exists (select 1 from _pending n where n.raw_label = p.raw_label and n.qb_section = p.qb_section and n.amount_cents = p.amount_cents);
 
     select array_agg(raw_label) into v_pending_labels from _pending;
     insert into uploads (company, year, month, status, source, unmapped_labels)
@@ -286,7 +289,10 @@ begin
            resolution_reason = 'Replaced by reconciliation #' || v_replacement_id
      where id = any (coalesce(v_old_pending, '{}'));
     insert into pending_items (upload_id, company, year, month, qb_section, raw_label, amount_cents)
-      select v_upload_id, p_company, p_year, v_month, qb_section, raw_label, amount_cents from _pending;
+      select v_upload_id, p_company, p_year, v_month, n.qb_section, n.raw_label, n.amount_cents from _pending n
+       where not exists (select 1 from pending_items p
+                          where p.company = p_company and p.year = p_year and p.month = v_month and p.status = 'pending'
+                            and p.raw_label = n.raw_label and p.qb_section = n.qb_section and p.amount_cents = n.amount_cents);
 
     insert into actuals_replacement_months (replacement_id, month, upload_id, qb_net_income_cents, before_fingerprint, after_fingerprint, replaced_pending_ids)
       values (v_replacement_id, v_month, v_upload_id, (v_month_json->>'qb_net_income_cents')::integer,

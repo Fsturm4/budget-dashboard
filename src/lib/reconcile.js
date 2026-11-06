@@ -83,7 +83,7 @@ export function diffMonth(stored, newRows, categories, correctionReasons) {
       const updated  = after.get(slug) ?? 0
       return {
         slug,
-        label:    categories[slug]?.display_name ?? slug,
+        label:    slug.startsWith('pending_') ? `${categories[slug]?.display_name ?? slug} (pending CPA review)` : (categories[slug]?.display_name ?? slug),
         section:  categories[slug]?.section ?? 'opex',
         existing,
         updated,
@@ -99,6 +99,29 @@ export function diffMonth(stored, newRows, categories, correctionReasons) {
 // What the month's active actuals would look like after the replacement.
 export function monthAfterReplacement(allActive, company, newRows) {
   return [...allActive.filter(r => r.company !== company), ...newRows.map(r => ({ ...r, company }))]
+}
+
+// Pending Review accounts for one month: what is held now, what the report holds, and what that means.
+//   storedPending: [{ raw_label, qb_section, amount_cents }]   heldItems: [{ rawLabel, qbSection, amountCents }]
+export function pendingReviewRows(storedPending, heldItems) {
+  const labels = [...new Set([...storedPending.map(p => p.raw_label), ...heldItems.map(i => i.rawLabel)])]
+  return labels.map(label => {
+    const stored = storedPending.find(p => p.raw_label === label)
+    const held   = heldItems.find(i => i.rawLabel === label)
+    const status = !stored ? 'new' : !held ? 'removed' : stored.amount_cents === held.amountCents ? 'unchanged' : 'changed'
+    return { label, existing: stored?.amount_cents ?? null, updated: held?.amountCents ?? null, status }
+  })
+}
+
+// Accounts the user has not decided about that are already held in Pending Review in every loaded
+// month where the report contains them: they keep their current status (nothing is reclassified).
+export function heldByDefault(reportsByMonth, storedPendingByMonth, mappings) {
+  const mapped = new Set(mappings.map(m => m.raw_label))
+  const labels = new Set()
+  for (const items of Object.values(reportsByMonth)) for (const i of items) if (!mapped.has(i.rawLabel)) labels.add(i.rawLabel)
+  return [...labels].filter(label =>
+    Object.entries(reportsByMonth).every(([month, items]) =>
+      !items.some(i => i.rawLabel === label) || (storedPendingByMonth[month] ?? []).some(p => p.raw_label === label)))
 }
 
 export const SECTION_LABEL = { revenue: 'Revenue', cogs: 'COGS', opex: 'Operating Expenses', other: 'Other' }

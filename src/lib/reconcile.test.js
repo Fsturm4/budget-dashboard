@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import * as XLSX from 'xlsx'
-import { readReport, buildNewFigures, diffMonth, fingerprint, allowedCategories, monthAfterReplacement } from './reconcile.js'
+import { pendingReviewRows, heldByDefault, readReport, buildNewFigures, diffMonth, fingerprint, allowedCategories, monthAfterReplacement } from './reconcile.js'
 
 function qbFile(company, period, lines) {
   const rows = [['Profit and Loss'], [company], [period], [null], [null, 'Total'], ...lines]
@@ -121,4 +121,25 @@ test('approvals offer only categories from the same section; revenue only for th
     ['insurance_general_liability', 'insurance_health', 'office_expense'])
   assert.deepEqual(allowedCategories(CATEGORIES, 'Income', 'turf_pro').map(c => c.slug), ['turf_pro_net_revenue'])
   assert.deepEqual(allowedCategories(CATEGORIES, 'Cost of Goods Sold', 'turf_pro').map(c => c.slug), ['subcontract_labor'])
+})
+
+test('pending accounts are labelled as pending CPA review in the differences', () => {
+  const [line] = diffMonth([{ id: 1, category_slug: 'pending_opex', amount_cents: 31500, upload_id: 9 }], [{ category_slug: 'pending_opex', amount_cents: 61500 }], CATEGORIES, {})
+  assert.equal(line.label, 'Uncategorized – Pending Review (pending CPA review)')
+  assert.equal(line.difference, 30000)
+})
+
+test('held accounts are classified unchanged, changed, removed or new — a $315 vs $615 difference is never hidden', () => {
+  const stored = [{ raw_label: 'Uncategorized Expense', qb_section: 'Expenses', amount_cents: 31500 }, { raw_label: 'Old Item', qb_section: 'Expenses', amount_cents: 100 }]
+  const rows = pendingReviewRows(stored, [{ rawLabel: 'Uncategorized Expense', qbSection: 'Expenses', amountCents: 61500 }, { rawLabel: 'Brand New', qbSection: 'Expenses', amountCents: 5 }])
+  assert.deepEqual(rows.map(r => [r.label, r.status]), [['Uncategorized Expense', 'changed'], ['Old Item', 'removed'], ['Brand New', 'new']])
+  assert.equal(pendingReviewRows(stored.slice(0, 1), [{ rawLabel: 'Uncategorized Expense', qbSection: 'Expenses', amountCents: 31500 }])[0].status, 'unchanged')
+})
+
+test('only accounts already held in Pending Review in every month they appear keep that status by default', () => {
+  const reports = { 4: [{ rawLabel: 'Uncategorized Expense' }, { rawLabel: '6233 Insurance - General' }], 5: [{ rawLabel: 'Uncategorized Expense' }] }
+  const held = { 4: [{ raw_label: 'Uncategorized Expense' }], 5: [] }
+  assert.deepEqual(heldByDefault(reports, held, []), [])
+  assert.deepEqual(heldByDefault({ 4: reports[4] }, held, []), ['Uncategorized Expense'])
+  assert.deepEqual(heldByDefault({ 4: reports[4] }, held, [{ raw_label: 'Uncategorized Expense' }]), [])
 })

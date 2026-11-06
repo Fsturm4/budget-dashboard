@@ -303,7 +303,9 @@ select replace_company_actuals('turf_pro', 2026, 'tp-sep.xlsx', 'Added office ex
 do $$ begin
   assert pg_temp.active_cents('turf_pro', 9, 'pending_opex') = 31500 and pg_temp.active_cents('turf_pro', 9, 'office_expense') = 5000, 'September replaced';
   assert (select count(*) from pending_items where month = 9 and status = 'pending') = 1, 'exactly one pending item (no duplicate)';
-  assert (select count(*) from pending_items where month = 9 and status = 'resolved' and resolution_reason like 'Replaced by%') = 1, 'old pending item closed, not deleted';
+  assert (select count(*) from pending_items where month = 9 and status = 'resolved') = 0, 'an unchanged pending account is left untouched, not closed and re-created';
+  assert (select amount_cents from pending_items where month = 9 and status = 'pending') = 31500, 'pending amount preserved';
+  assert pg_temp.active_cents('turf_pro', 9, 'pending_opex') = 31500, 'pending amount still counted in September totals';
 end $$;
 
 -- 14. A later correction blocks restoring the replacement it follows.
@@ -332,6 +334,24 @@ select restore_actuals_replacement(pg_temp.rid('tp-sep.xlsx'), 'undo September')
 do $$ begin
   assert pg_temp.active_cents('turf_pro', 9, 'office_expense') is null and pg_temp.active_cents('turf_pro', 9, 'pending_opex') = 31500, 'September back to original';
   assert (select count(*) from pending_items where month = 9 and status = 'pending') = 1, 'one pending item after restore';
+end $$;
+
+-- 16b. If the report's amount for the held account differs ($615 instead of $315), the old pending item is closed
+--      (kept as history), a new one holds the new amount, nothing is dropped from totals, and restore brings $315 back.
+select replace_company_actuals('turf_pro', 2026, 'tp-sep-615.xlsx', 'Held amount changed', jsonb_build_array(
+  pg_temp.month_json('turf_pro', 9, 938500,
+    '[{"raw_label":"4000 Sales","qb_section":"Income","amount_cents":1000000},{"raw_label":"9999 Suspense","qb_section":"Expenses","amount_cents":61500}]',
+    '[{"category_slug":"turf_pro_net_revenue","amount_cents":1000000},{"category_slug":"pending_opex","amount_cents":61500}]',
+    '[{"raw_label":"9999 Suspense","qb_section":"Expenses","amount_cents":61500}]')));
+do $$ begin
+  assert pg_temp.active_cents('turf_pro', 9, 'pending_opex') = 61500, 'changed pending amount is in the totals';
+  assert (select count(*) from pending_items where month = 9 and status = 'pending') = 1 and (select amount_cents from pending_items where month = 9 and status = 'pending') = 61500, 'one pending item at the new amount';
+  assert (select count(*) from pending_items where month = 9 and status = 'resolved' and amount_cents = 31500) = 1, 'old pending item closed, not deleted';
+end $$;
+select restore_actuals_replacement(pg_temp.rid('tp-sep-615.xlsx'), 'undo');
+do $$ begin
+  assert pg_temp.active_cents('turf_pro', 9, 'pending_opex') = 31500, 'restored to the original pending amount';
+  assert (select count(*) from pending_items where month = 9 and status = 'pending') = 1 and (select amount_cents from pending_items where month = 9 and status = 'pending') = 31500, 'one pending item at the original amount after restore';
 end $$;
 
 -- 17. Replace GreenAce alone: Turf Pro is untouched.

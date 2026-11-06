@@ -5,6 +5,7 @@ import { formatDollars } from '../lib/money.js'
 import { COMPANY_LABELS, MONTH_LABELS, ACTUALS_STATUS, DASHBOARD_YEAR } from '../lib/config.js'
 import {
   readReport, buildNewFigures, diffMonth, fingerprint, monthAfterReplacement, allowedCategories, SECTION_LABEL,
+  pendingReviewRows, heldByDefault,
 } from '../lib/reconcile.js'
 import { computeRows } from './MonthlyTracker.jsx'
 
@@ -56,6 +57,36 @@ function SummaryTable({ title, before, after }) {
   )
 }
 
+const PENDING_STATUS = {
+  unchanged: 'Unchanged — kept in Pending Review, still counted in the totals',
+  changed:   'Amount changed — compare with QuickBooks before confirming',
+  removed:   'No longer in the QuickBooks report — this pending item will be closed (kept in history)',
+  new:       'New in this report — held in Pending Review',
+}
+
+function PendingNotice({ view }) {
+  const rows = pendingReviewRows(view.data.pending, view.plan.pendingItems)
+  if (rows.length === 0) return null
+  return (
+    <div className="rc-pending">
+      <h4>Pending CPA review (not reclassified)</h4>
+      <table className="rc-table">
+        <thead><tr><th>QuickBooks account</th><th>Held now</th><th>In this report</th><th>Status</th></tr></thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.label} className={r.status === 'changed' ? 'rc-row--alert' : ''}>
+              <td>{r.label}</td>
+              <td>{r.existing === null ? '—' : formatDollars(r.existing)}</td>
+              <td>{r.updated === null ? '—' : formatDollars(r.updated)}</td>
+              <td>{PENDING_STATUS[r.status]}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function MonthPreview({ company, view, onAck }) {
   const { month, diff, summaryCompany, summaryCombined, niChange, flagged, ack } = view
   const label = `${COMPANY_LABELS[company]} — ${MONTH_LABELS[month - 1]} ${DASHBOARD_YEAR}`
@@ -72,6 +103,7 @@ function MonthPreview({ company, view, onAck }) {
       <section className="rc-card">
         <h3>{label}</h3>
         <p className="rc-muted">No differences from the stored figures. This month will not be changed.</p>
+        <PendingNotice view={view} />
       </section>
     )
   }
@@ -105,6 +137,7 @@ function MonthPreview({ company, view, onAck }) {
           ))}
         </tbody>
       </table>
+      <PendingNotice view={view} />
       <div className="rc-summaries">
         <SummaryTable title={`${COMPANY_LABELS[company]} totals`} {...summaryCompany} />
         <SummaryTable title="Combined totals (after intercompany eliminations)" {...summaryCombined} />
@@ -165,7 +198,7 @@ function UnmappedPanel({ company, accounts, categories, approvals, setApprovals 
                     {allowedCategories(categories, account.qbSection, company).map(c => (
                       <option key={c.slug} value={c.slug}>Map to {c.label}</option>
                     ))}
-                    <option value="__pending">Hold in Pending Review</option>
+                    <option value="__pending">Hold in Pending Review (pending CPA review)</option>
                   </select>
                 </td>
               </tr>
@@ -292,13 +325,15 @@ export default function Reconcile() {
           .eq('year', DASHBOARD_YEAR).eq('month', month),
         supabase.from('corrections').select('category_slug, reason, created_at')
           .eq('company', company).eq('year', DASHBOARD_YEAR).eq('month', month).order('created_at', { ascending: true }),
-      ]).then(([actualsRes, elimsRes, correctionsRes]) => {
-        if (actualsRes.error || elimsRes.error || correctionsRes.error) {
+        supabase.from('pending_items').select('raw_label, qb_section, amount_cents')
+          .eq('company', company).eq('year', DASHBOARD_YEAR).eq('month', month).eq('status', 'pending'),
+      ]).then(([actualsRes, elimsRes, correctionsRes, pendingRes]) => {
+        if (actualsRes.error || elimsRes.error || correctionsRes.error || pendingRes.error) {
           setMonthData(prev => ({ ...prev, [month]: { error: 'Could not load the stored figures. Try again.' } }))
           return
         }
         const reasons = Object.fromEntries(correctionsRes.data.map(c => [c.category_slug, c.reason]))
-        setMonthData(prev => ({ ...prev, [month]: { allActive: actualsRes.data, elims: elimsRes.data, reasons } }))
+        setMonthData(prev => ({ ...prev, [month]: { allActive: actualsRes.data, elims: elimsRes.data, reasons, pending: pendingRes.data } }))
       })
     }
   }, [readMonths.join(',')])
@@ -317,6 +352,14 @@ export default function Reconcile() {
 
   const sectionBySlug = useMemo(() => Object.fromEntries(Object.entries(categories).map(([s, c]) => [s, c.section])), [categories])
 
+  // Accounts already held in Pending Review keep that status unless you choose otherwise.
+  const reportsByMonth = Object.fromEntries(files.filter(f => f.report.month && monthData[f.report.month]?.pending).map(f => [f.report.month, f.report.items]))
+  const storedPendingByMonth = Object.fromEntries(Object.entries(monthData).filter(([, d]) => d.pending).map(([m, d]) => [m, d.pending]))
+  const effectiveApprovals = {
+    ...Object.fromEntries(heldByDefault(reportsByMonth, storedPendingByMonth, mappings).map(label => [label, { action: 'pending' }])),
+    ...approvals,
+  }
+
   // One entry per month, with every number the preview and the database call need.
   const filesByMonth = {}
   for (const f of files.filter(f => f.report.month)) (filesByMonth[f.report.month] ??= []).push(f)
@@ -333,7 +376,7 @@ export default function Reconcile() {
       const stored = data.allActive.filter(r => r.company === company)
       if (stored.length === 0)
         return { month, file, data, missing: true }
-      const plan = buildNewFigures(file.report.items, mappings, sectionBySlug, approvals)
+      const plan = buildNewFigures(file.report.items, mappings, sectionBySlug, effectiveApprovals)
       const diff = diffMonth(stored, plan.rows, categories, data.reasons)
       const newActive = monthAfterReplacement(data.allActive, company, plan.rows)
       const summaryCompany  = summarize(stored, newActive.filter(r => r.company === company), data.elims, month, company)
@@ -356,7 +399,7 @@ export default function Reconcile() {
   // Keep approved rows visible after they resolve, so a decision can be changed.
   for (const v of views.filter(v => v.plan)) {
     for (const item of v.file.report.items) {
-      if (approvals[item.rawLabel] && !mappings.some(m => m.raw_label === item.rawLabel)) {
+      if (effectiveApprovals[item.rawLabel] && !mappings.some(m => m.raw_label === item.rawLabel)) {
         const entry = (unresolvedByLabel[item.rawLabel] ??= { rawLabel: item.rawLabel, qbSection: item.qbSection, months: [] })
         if (!entry.months.some(m => m.month === v.month)) entry.months.push({ month: v.month, amountCents: item.amountCents })
       }
@@ -460,7 +503,7 @@ export default function Reconcile() {
         ))}
       </section>
 
-      <UnmappedPanel company={company} accounts={accounts} categories={categories} approvals={approvals} setApprovals={setApprovals} />
+      <UnmappedPanel company={company} accounts={accounts} categories={categories} approvals={effectiveApprovals} setApprovals={setApprovals} />
 
       {views.map(v => (
         v.data?.error ? <p key={v.month} className="rc-alert">{MONTH_LABELS[v.month - 1]}: {v.data.error}</p>
