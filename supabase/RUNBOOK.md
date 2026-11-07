@@ -102,6 +102,15 @@ In functions, empty a temporary table with `truncate`, not a bare `delete`. Migr
 
 Supabase records a migration under the timestamp at which it was applied, not the timestamp in the filename. The reconcile migration is `20261106000000_reconcile_replace_actuals.sql` in GitHub but was recorded in production as version `20261106232421` (`reconcile_replace_actuals`). The SQL is identical apart from the removed `begin;`/`commit;`, which the apply tool supplies itself.
 
+Recorded in production (name → version Supabase assigned → file in this repository):
+
+| Name | Production version | Repository file |
+|------|--------------------|-----------------|
+| `reconcile_replace_actuals` | `20261106232421` | `20261106000000_reconcile_replace_actuals.sql` |
+| `reconcile_safeupdate_fix` | `20261107001048` | `20261107000000_reconcile_safeupdate_fix.sql` |
+
+Both are already applied. Do not run either file again.
+
 Before the next migration:
 1. Compare `select version, name from supabase_migrations.schema_migrations order by version` with `supabase/migrations/`. Match by **name**, not version.
 2. Never re-run a migration already recorded by name; fix forward with a new file, as the safe-update fix does. The original file is not edited.
