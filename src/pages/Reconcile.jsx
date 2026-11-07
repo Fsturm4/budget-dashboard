@@ -220,9 +220,12 @@ function History({ categories, refreshKey, onChanged }) {
   useEffect(() => {
     supabase
       .from('actuals_replacements')
-      .select('*, actuals_replacement_months(month), actuals_replacement_lines(month, category_slug, before_cents, after_cents)')
+      .select('*, actuals_replacement_months(month, actuals_replacement_lines(category_slug, before_cents, after_cents))')
       .order('created_at', { ascending: false })
-      .then(({ data }) => setRows(data ?? []))
+      .then(({ data, error }) => {
+        if (error) { setMessage(`Could not load replacement history: ${error.message}`); return }
+        setRows(data)
+      })
   }, [refreshKey])
 
   async function restore(id) {
@@ -235,7 +238,7 @@ function History({ categories, refreshKey, onChanged }) {
     onChanged()
   }
 
-  if (rows.length === 0) return <p className="rc-muted">No replacements yet.</p>
+  if (rows.length === 0) return message ? <p className="rc-alert">{message}</p> : <p className="rc-muted">No replacements yet.</p>
   return (
     <div>
       {message && <p className="rc-alert">{message}</p>}
@@ -253,7 +256,7 @@ function History({ categories, refreshKey, onChanged }) {
             <table className="rc-table">
               <thead><tr><th>Month</th><th>Category</th><th>Before</th><th>After</th></tr></thead>
               <tbody>
-                {[...r.actuals_replacement_lines].sort((a, b) => a.month - b.month).map(l => (
+                {r.actuals_replacement_months.flatMap(m => m.actuals_replacement_lines.map(l => ({ ...l, month: m.month }))).sort((a, b) => a.month - b.month).map(l => (
                   <tr key={`${l.month}-${l.category_slug}`}>
                     <td>{MONTH_LABELS[l.month - 1]}</td><td>{categories[l.category_slug]?.display_name ?? l.category_slug}</td>
                     <td>{formatDollars(l.before_cents ?? 0)}</td><td>{formatDollars(l.after_cents ?? 0)}</td>
