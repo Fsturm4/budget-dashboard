@@ -371,7 +371,7 @@ end $$;
 
 -- 18. The audit tables are read-only to the dashboard's API role.
 select pg_temp.expect_error($$ insert into actuals_replacements (company, year, file_names, reason, created_by) values ('turf_pro', 2026, 'x', 'x', gen_random_uuid()) $$, 'permission denied%');
-select pg_temp.expect_error($$ delete from actuals_replacement_lines $$, 'permission denied%');
+select pg_temp.expect_error($$ delete from actuals_replacement_lines where true $$, 'permission denied%');
 
 rollback;
 \echo reconcile_replace_test: all checks passed
