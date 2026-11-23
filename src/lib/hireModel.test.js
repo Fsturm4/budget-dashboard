@@ -1,41 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildBaseline, projectScenario } from './hireModel.js'
+import { projectHire } from './hireModel.js'
 
-const CATEGORIES = [
-  { slug: 'turf_pro_net_revenue',   section: 'revenue' },
-  { slug: 'greenace_net_revenue',   section: 'revenue' },
-  { slug: 'subcontract_labor',      section: 'cogs'    },
-  { slug: 'owner_wages',            section: 'opex'    },
-  { slug: 'depreciation',           section: 'opex'    },
-  { slug: 'office_expense',         section: 'opex'    },
-  { slug: 'other_income_expense',   section: 'other'   },
-]
-
-const budgetRow = (slug, monthlyCents) => ({
-  category_slug: slug,
-  ...Object.fromEntries(
-    ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].map(m => [`${m}_cents`, monthlyCents])
-  ),
-})
-
-// January is uploaded; February–December come from budget.
-const ACTUALS = [
-  { category_slug: 'turf_pro_net_revenue', month: 1, amount_cents: 5000000 },
-  { category_slug: 'greenace_net_revenue', month: 1, amount_cents: 2000000 },
-  { category_slug: 'greenace_net_revenue', month: 1, amount_cents: -1500000 }, // intercompany elimination
-  { category_slug: 'subcontract_labor',    month: 1, amount_cents: 1600000 },
-  { category_slug: 'subcontract_labor',    month: 1, amount_cents: -1500000 }, // intercompany elimination
-  { category_slug: 'owner_wages',          month: 1, amount_cents: 600000 },
-]
-const BUDGET = [
-  budgetRow('turf_pro_net_revenue', 3000000),
-  budgetRow('subcontract_labor',    1000000),
-  budgetRow('owner_wages',           500000),
-  budgetRow('depreciation',           60000),
-  budgetRow('office_expense',        100000),
-  budgetRow('other_income_expense',   10000),
-]
+// Full-Year Outlook with $67,620.40 of owner wages and the $20,000 SEP already inside net income.
+const OUTLOOK = { netIncome: 5701391, ownerWages: 6762040, sep: 2000000, depreciation: 132050 }
 
 const ASSUMPTIONS = {
   hourlyRateCents:     3200,
@@ -45,66 +13,68 @@ const ASSUMPTIONS = {
   distributionsCents:  2000000,
   motherPaymentsCents: 1728000,
   loanPrincipalCents:  0,
-  startingCashCents:   5000000,
-  customers:           520,
+  startingCashCents:   6000000,
+  lineOfCreditCents:   1000000,
 }
 
-const baseline = buildBaseline(ACTUALS, BUDGET, CATEGORIES)
+const at = (rate, hours) => projectHire(OUTLOOK, { ...ASSUMPTIONS, hourlyRateCents: rate }, hours)
 
-test('baseline uses actuals for uploaded months and budget for the rest', () => {
-  assert.deepEqual(baseline.actualMonths, [1])
-  assert.deepEqual(baseline.months[0], {
-    revenue: 5500000, cogs: 100000, opex: 600000, other: 0, ownerWages: 600000, depreciation: 0,
-  })
-  assert.deepEqual(baseline.months[1], {
-    revenue: 3000000, cogs: 1000000, opex: 660000, other: 10000, ownerWages: 500000, depreciation: 60000,
-  })
+test('technician cost is hours x wage x (1 + burden) at $30, $32 and $34', () => {
+  assert.equal(at(3000, 900).technicianCost,  3240000)
+  assert.equal(at(3200, 900).technicianCost,  3456000)
+  assert.equal(at(3400, 900).technicianCost,  3672000)
+  assert.equal(at(3000, 1440).technicianCost, 5184000)
+  assert.equal(at(3200, 1440).technicianCost, 5529600)
+  assert.equal(at(3400, 1440).technicianCost, 5875200)
+  assert.equal(at(3200, 0).technicianCost,    0)
 })
 
-test('technician cost is hours x rate x (1 + burden)', () => {
-  assert.equal(projectScenario(baseline, ASSUMPTIONS, 900).technicianCost,  3456000)
-  assert.equal(projectScenario(baseline, ASSUMPTIONS, 1440).technicianCost, 5529600)
-  assert.equal(projectScenario(baseline, ASSUMPTIONS, 0).technicianCost,    0)
+test('with no employee, net income is the outlook with owner salary raised to the planned amount', () => {
+  assert.equal(at(3200, 0).netIncome, 5701391 - (8000000 - 6762040))
 })
 
-test('owner salary and SEP count once; distributions and loan principal do not touch net income', () => {
-  // Income before owner pay: Jan 5,400,000 + 11 x 1,850,000 = 25,750,000
-  const none = projectScenario(baseline, ASSUMPTIONS, 0)
-  assert.equal(none.netIncome, 25750000 - 8000000 - 2000000)
-
-  const moreDraws = projectScenario(
-    baseline, { ...ASSUMPTIONS, distributionsCents: 9000000, loanPrincipalCents: 1200000 }, 0
+test('SEP is counted once whether or not the outlook already contains it', () => {
+  const withoutSepCategory = projectHire(
+    { ...OUTLOOK, netIncome: OUTLOOK.netIncome + 2000000, sep: 0 }, ASSUMPTIONS, 0
   )
-  assert.equal(moreDraws.netIncome, none.netIncome)
-  assert.equal(moreDraws.cashChange, none.cashChange - 7000000 - 1200000)
+  assert.equal(withoutSepCategory.netIncome, at(3200, 0).netIncome)
 })
 
-test('annual cash change reconciles to net income plus depreciation less cash-only outflows', () => {
+test('distributions, payments to mother and loan principal reduce cash but not net income', () => {
+  const base = at(3200, 1440)
+  const more = projectHire(
+    OUTLOOK, { ...ASSUMPTIONS, distributionsCents: 3000000, motherPaymentsCents: 2000000, loanPrincipalCents: 500000 }, 1440
+  )
+  assert.equal(more.netIncome, base.netIncome)
+  assert.equal(more.cashChange, base.cashChange - 1000000 - 272000 - 500000)
+})
+
+test('cash change is net income plus depreciation less cash-only obligations', () => {
   for (const hours of [0, 900, 1440]) {
-    const s = projectScenario(baseline, ASSUMPTIONS, hours)
-    assert.equal(s.cashChange, s.netIncome + 11 * 60000 - 2000000 - 1728000)
-    assert.equal(s.yearEndCash, 5000000 + s.cashChange)
+    const s = at(3200, hours)
+    assert.equal(s.cashChange, s.netIncome + 132050 - 2000000 - 1728000)
+    assert.equal(s.yearEndCashLessDebt, 6000000 - 1000000 + s.cashChange)
   }
 })
 
-test('raising the wage lowers net income and cash by the same technician cost', () => {
-  const at32 = projectScenario(baseline, ASSUMPTIONS, 1440)
-  const at34 = projectScenario(baseline, { ...ASSUMPTIONS, hourlyRateCents: 3400 }, 1440)
+test('raising the wage lowers net income and cash by exactly the added technician cost', () => {
   const extra = 1440 * 200 * 1.2
-  assert.equal(at34.technicianCost, at32.technicianCost + extra)
-  assert.equal(at34.netIncome,      at32.netIncome - extra)
-  assert.equal(at34.yearEndCash,    at32.yearEndCash - extra)
-  assert.ok(at34.customersNeeded > at32.customersNeeded)
+  assert.equal(at(3400, 1440).netIncome,           at(3200, 1440).netIncome - extra)
+  assert.equal(at(3400, 1440).cashChange,          at(3200, 1440).cashChange - extra)
+  assert.equal(at(3400, 1440).yearEndCashLessDebt, at(3200, 1440).yearEndCashLessDebt - extra)
+  assert.equal(at(3400, 0).netIncome,              at(3200, 0).netIncome)
 })
 
-test('lowest cash is the lowest month-end balance', () => {
-  const lean = projectScenario(baseline, { ...ASSUMPTIONS, startingCashCents: 0, distributionsCents: 30000000 }, 1440)
-  assert.equal(lean.lowestCash, lean.yearEndCash)
-  assert.equal(lean.lowestCashMonth, 12)
+test('debt carried is the shortfall of year-end cash against the line of credit, never negative', () => {
+  assert.equal(at(3200, 0).debtCarried, 0)
+  const short = projectHire(OUTLOOK, { ...ASSUMPTIONS, startingCashCents: 1000000 }, 1440)
+  assert.equal(short.debtCarried, -short.yearEndCashLessDebt)
+  assert.ok(short.debtCarried > 0)
 })
 
-test('customers needed covers technician cost from gross profit per customer', () => {
-  // Gross profit: Jan 5,400,000 + 11 x 2,000,000 = 27,400,000 over 520 customers
-  const s = projectScenario(baseline, ASSUMPTIONS, 900)
-  assert.equal(s.customersNeeded, Math.ceil(3456000 / (27400000 / 520)))
+test('new borrowing is only what the year uses beyond starting cash', () => {
+  assert.equal(at(3200, 0).newBorrowing, 0)
+  const short = projectHire(OUTLOOK, { ...ASSUMPTIONS, startingCashCents: 1000000 }, 1440)
+  assert.equal(short.newBorrowing, short.debtCarried - 1000000)
+  assert.equal(short.newBorrowing, -(1000000 + short.cashChange))
 })
