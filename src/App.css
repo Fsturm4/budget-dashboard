@@ -1631,6 +1631,43 @@ button.nav-link {
   font-size: 0.8125rem;
 }
 
+/* ── employee 2027 planning / readable scenario comparison ──────────────── */
+.employee-benefit-section { max-width: 960px; }
+.employee-benefit-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 2fr) repeat(2, minmax(140px, 1fr));
+  align-items: center;
+  gap: 0.65rem 1rem;
+  margin: 1rem 0;
+  font-size: 0.8125rem;
+}
+.employee-benefit-grid strong { text-align: right; color: #374151; font-size: 0.75rem; }
+.employee-benefit-grid label { color: #374151; }
+.employee-benefit-grid input,
+.employee-benefit-margin input {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  padding: 0.375rem 0.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.employee-benefit-margin { display: flex; align-items: center; gap: 1rem; font-size: 0.8125rem; }
+.employee-benefit-margin input { width: 6rem; }
+.employee-table-scroll { overflow-x: auto; }
+.employee-comparison-table { min-width: 660px; }
+.employee-key-row { background: #f3f4f6; }
+.employee-key-row td { font-weight: 700; }
+.employee-detail { margin-top: 1rem; font-size: 0.8125rem; color: #374151; }
+.employee-detail summary { cursor: pointer; font-weight: 500; }
+.employee-detail .employee-table-scroll { margin-top: 0.5rem; }
+@media (max-width: 600px) {
+  .employee-benefit-grid { grid-template-columns: minmax(112px, 1.4fr) repeat(2, minmax(90px, 1fr)); gap: 0.5rem; }
+  .employee-benefit-grid input { font-size: 0.75rem; }
+}
+
 /* ── tracker export menu ──────────────────────────────────────────────────── */
 
 .export-menu { position: relative; margin-left: auto; }
