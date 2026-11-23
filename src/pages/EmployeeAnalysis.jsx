@@ -6,7 +6,7 @@ import { buildDashboard } from '../lib/dashboard.js'
 import { projectHire } from '../lib/hireModel.js'
 
 const HIRE_YEAR   = DASHBOARD_YEAR + 1
-const STORAGE_KEY = 'employee-analysis-assumptions'
+const STORAGE_KEY = 'employee-analysis-assumptions-v2'
 
 const OPTIONS = [
   { label: 'No employee',        hours: 0 },
@@ -19,8 +19,9 @@ const DEFAULT_ASSUMPTIONS = {
   burdenPct:      '20',
   ownerSalary:    '80000',
   sep:            '20000',
+  rent:           '20556',
   distributions:  '20000',
-  motherPayments: '17280',
+  motherPayments: '17298.72',
   loanPrincipal:  '0',
   startingCash:   '',
   lineOfCredit:   '',
@@ -30,6 +31,7 @@ const ASSUMPTION_FIELDS = [
   { key: 'burdenPct',      label: 'Employer payroll burden (%)',   note: 'Estimate' },
   { key: 'ownerSalary',    label: 'Owner salary ($)' },
   { key: 'sep',            label: 'Owner SEP IRA ($)' },
+  { key: 'rent',           label: 'Rent & Lease ($)',              note: '$1,650 rent + $63 storage a month' },
   { key: 'distributions',  label: 'Personal distributions ($)',    note: 'Cash only' },
   { key: 'motherPayments', label: 'Payments to mother ($)',        note: 'Cash only — treatment pending CPA' },
   { key: 'loanPrincipal',  label: 'Other loan principal ($)',      note: 'Cash only — manual entry' },
@@ -82,6 +84,7 @@ export default function EmployeeAnalysis() {
     netIncome:    dashboard.kpi.ni.ol,
     ownerWages:   dashboard.fullYearOutlook('owner_wages'),
     sep:          dashboard.fullYearOutlook('sep_ira_expense'),
+    rent:         dashboard.fullYearOutlook('rent_and_lease'),
     depreciation: dashboard.fullYearOutlook('depreciation'),
   }
 
@@ -91,6 +94,7 @@ export default function EmployeeAnalysis() {
     burdenPct:           Number(inputs.burdenPct),
     ownerSalaryCents:    toCents(inputs.ownerSalary),
     sepCents:            toCents(inputs.sep),
+    rentCents:           toCents(inputs.rent),
     distributionsCents:  toCents(inputs.distributions),
     motherPaymentsCents: toCents(inputs.motherPayments),
     loanPrincipalCents:  toCents(inputs.loanPrincipal),
@@ -138,6 +142,13 @@ export default function EmployeeAnalysis() {
                 <small>{formatDollars(outlook.sep)} in the outlook, {formatDollars(assumptions.sepCents)} planned</small>
               </td>
               <td>{formatDollars(outlook.sep - assumptions.sepCents)}</td>
+            </tr>
+            <tr>
+              <td>
+                Rent &amp; Lease adjustment
+                <small>{formatDollars(outlook.rent)} in the outlook, {formatDollars(assumptions.rentCents)} planned</small>
+              </td>
+              <td>{formatDollars(outlook.rent - assumptions.rentCents)}</td>
             </tr>
             <tr>
               <td>{HIRE_YEAR} net income before any hire</td>
@@ -242,9 +253,10 @@ export default function EmployeeAnalysis() {
             vehicle or training.
           </li>
           <li>
-            <strong>Owner salary and SEP are counted once.</strong> The amounts already inside the outlook are
-            taken out and the planned amounts put in; the Starting point table shows each adjustment.
-            No other {HIRE_YEAR} adjustment is made.
+            <strong>Owner salary, SEP and rent are counted once.</strong> The amounts already inside the outlook
+            are taken out and the planned amounts put in; the Starting point table shows each adjustment.
+            This changes the {HIRE_YEAR} projection only, not any {DASHBOARD_YEAR} figure. No other {HIRE_YEAR}
+            adjustment is made.
           </li>
           <li>
             <strong>Payments to your mother</strong> are treated as cash only, following the current QuickBooks
