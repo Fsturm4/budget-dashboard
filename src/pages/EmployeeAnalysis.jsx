@@ -80,6 +80,9 @@ export default function EmployeeAnalysis() {
   if (!dashboard) return <div className="page"><p className="overview-status">Loading…</p></div>
 
   const setInput = (key, value) => setInputs(current => ({ ...current, [key]: value }))
+  const setNonnegativeDollars = (key, value) => {
+    if (Number.isFinite(Number(value)) && Number(value) >= 0) setInput(key, value)
+  }
 
   const outlook = {
     netIncome:    dashboard.kpi.ni.ol,
@@ -235,9 +238,9 @@ export default function EmployeeAnalysis() {
               {hires.map(s => (
                 <td key={s.label}>
                   <input
-                    type="number" min="0" aria-label={`Additional annual profit or savings from hiring, ${s.label}`}
+                    type="number" min="0" step="0.01" aria-label={`Additional annual profit or savings from hiring, ${s.label}`}
                     value={inputs[s.benefitKey]}
-                    onChange={e => setInput(s.benefitKey, e.target.value)}
+                    onChange={e => setNonnegativeDollars(s.benefitKey, e.target.value)}
                   />
                 </td>
               ))}
