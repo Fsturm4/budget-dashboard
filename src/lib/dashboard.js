@@ -1,4 +1,5 @@
 import { MONTH_LABELS } from './config.js'
+import { TABLE_ROWS, SECTION_SLUGS } from './trackerRows.js'
 
 // Categories budgeted as one annual payment that QuickBooks may record in a
 // different month from the budgeted one. While the year is still open their
@@ -91,5 +92,44 @@ export function buildDashboard(actuals, budgetRows, categories) {
     }
   })
 
-  return { kpi: { rev, cogs, gp, opex, noi, ni }, chartData, actualizedMonths: sortedActualMonths, fullYearOutlook }
+  // One category's outlook line. Remaining is whatever the outlook adds to actuals
+  // to date, so year-to-date plus remaining always equals the outlook.
+  const categoryLine = slug => outlookLine(ytdActual(slug), fullYearOutlook(slug), getAnnualBudget(slug))
+
+  return {
+    kpi: { rev, cogs, gp, opex, other, noi, ni },
+    chartData,
+    actualizedMonths: sortedActualMonths,
+    fullYearOutlook,
+    categoryLine,
+  }
+}
+
+const outlookLine = (ytd, outlook, annual) => ({ ytd, remaining: outlook - ytd, outlook, annual })
+
+const BREAKDOWN_SECTIONS = [
+  { key: 'revenue', kpiKey: 'rev',   label: 'Revenue',                  higherIsBetter: true  },
+  { key: 'cogs',    kpiKey: 'cogs',  label: 'Cost of goods sold',       higherIsBetter: false },
+  { key: 'opex',    kpiKey: 'opex',  label: 'Operating expenses',       higherIsBetter: false },
+  { key: 'other',   kpiKey: 'other', label: 'Other income / (expense)', higherIsBetter: true  },
+]
+
+// The Full-Year Outlook laid out by section and category: year-to-date actual,
+// remaining budget, outlook and annual budget. Reads a buildDashboard result, so
+// every page shows the same outlook.
+export function outlookBreakdown(dashboard) {
+  const labelBySlug = new Map(TABLE_ROWS.filter(row => row.slug).map(row => [row.slug, row.label]))
+  const sectionLine = totals => outlookLine(totals.ya, totals.ol, totals.an)
+
+  const sections = BREAKDOWN_SECTIONS.map(({ key, kpiKey, label, higherIsBetter }) => ({
+    key,
+    label,
+    higherIsBetter,
+    ...sectionLine(dashboard.kpi[kpiKey]),
+    categories: SECTION_SLUGS[key]
+      .map(slug => ({ slug, label: labelBySlug.get(slug), ...dashboard.categoryLine(slug) }))
+      .filter(line => line.ytd !== 0 || line.remaining !== 0 || line.annual !== 0),
+  }))
+
+  return { sections, netIncome: sectionLine(dashboard.kpi.ni) }
 }
