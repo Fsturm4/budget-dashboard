@@ -87,3 +87,53 @@ test('new borrowing is only what the year uses beyond starting cash', () => {
   assert.equal(short.newBorrowing, short.debtCarried - 1000000)
   assert.equal(short.newBorrowing, -(1000000 + short.cashChange))
 })
+
+test('with no incremental benefits, old employee and cash figures are unchanged', () => {
+  for (const hours of [0, 900, 1440]) {
+    const result = projectHire(OUTLOOK, ASSUMPTIONS, hours, {
+      addedRevenueCents: 0, subcontractorSavingsCents: 0, grossMarginPct: 60,
+    })
+    assert.equal(result.netIncome, at(3200, hours).netIncome)
+    assert.equal(result.cashChange, at(3200, hours).cashChange)
+    assert.equal(result.addedGrossProfitCents, 0)
+  }
+})
+
+test('incremental new sales affect profit and cash only at the contribution margin, not full sales', () => {
+  const baseline = at(3200, 900)
+  const withRevenue = projectHire(OUTLOOK, ASSUMPTIONS, 900, {
+    addedRevenueCents: 2500000, grossMarginPct: 60, subcontractorSavingsCents: 0,
+  })
+  assert.equal(withRevenue.addedRevenueCents, 2500000)
+  assert.equal(withRevenue.addedGrossProfitCents, 1500000)
+  assert.equal(withRevenue.netIncome, baseline.netIncome + 1500000)
+  assert.equal(withRevenue.cashChange, baseline.cashChange + 1500000)
+})
+
+test('subcontractor savings increase projected net income and cash without reducing hire cost', () => {
+  const baseline = at(3200, 900)
+  const withSavings = projectHire(OUTLOOK, ASSUMPTIONS, 900, {
+    addedRevenueCents: 0, grossMarginPct: 60, subcontractorSavingsCents: 500000,
+  })
+  assert.equal(withSavings.technicianCost, baseline.technicianCost)
+  assert.equal(withSavings.subcontractorSavingsCents, 500000)
+  assert.equal(withSavings.netIncome, baseline.netIncome + 500000)
+  assert.equal(withSavings.yearEndCashLessDebt, baseline.yearEndCashLessDebt + 500000)
+})
+
+test('growth assumptions never artificially improve the no-employee scenario', () => {
+  const baseline = at(3200, 0)
+  const noHire = projectHire(OUTLOOK, ASSUMPTIONS, 0, {
+    addedRevenueCents: 20000000, grossMarginPct: 100, subcontractorSavingsCents: 10000000,
+  })
+  assert.equal(noHire.netIncome, baseline.netIncome)
+  assert.equal(noHire.addedGrossProfitCents, 0)
+  assert.equal(noHire.subcontractorSavingsCents, 0)
+})
+
+test('new sales contribution uses bounded gross margins', () => {
+  const tooHigh = projectHire(OUTLOOK, ASSUMPTIONS, 900, { addedRevenueCents: 100000, grossMarginPct: 150 })
+  const tooLow = projectHire(OUTLOOK, ASSUMPTIONS, 900, { addedRevenueCents: 100000, grossMarginPct: -20 })
+  assert.equal(tooHigh.addedGrossProfitCents, 100000)
+  assert.equal(tooLow.addedGrossProfitCents, 0)
+})
