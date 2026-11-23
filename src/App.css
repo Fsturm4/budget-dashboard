@@ -1468,58 +1468,84 @@ button.nav-link {
   margin-top: 0.5rem;
 }
 
-/* ── employee analysis placeholder ───────────────────────────────────────── */
+/* ── employee analysis ───────────────────────────────────────────────────── */
 
-.employee-page {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: calc(100vh - 56px - 4rem);
+.employee-page { max-width: 960px; }
+.employee-page h1 { margin-bottom: 0.5rem; }
+
+.employee-assumptions {
+  padding: 1rem 1.25rem;
+  background: #fffbeb;
+  border: 1px dashed #f59e0b;
+  border-radius: 8px;
 }
 
-.employee-placeholder {
-  max-width: 440px;
-  text-align: center;
+.employee-wage {
   display: flex;
-  flex-direction: column;
   align-items: center;
   gap: 0.75rem;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+  color: #374151;
 }
 
-.employee-placeholder-icon {
-  font-size: 2.5rem;
-  margin-bottom: 0.25rem;
+.employee-wage input { flex: 1; max-width: 280px; }
+
+.employee-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem 1rem;
 }
 
-.employee-placeholder h1 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: #111827;
-}
-
-.employee-placeholder-status {
-  display: inline-block;
-  padding: 0.25rem 0.75rem;
-  background: #f3f4f6;
-  border-radius: 4px;
+.employee-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
   font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  color: #374151;
+}
+
+.employee-field input {
+  padding: 0.375rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.employee-field small { color: #b45309; }
+
+.employee-table td,
+.employee-table th { text-align: right; font-variant-numeric: tabular-nums; }
+
+.employee-table td:first-child {
+  text-align: left;
+  font-weight: 500;
+  width: 34%;
+}
+
+.employee-table small {
+  display: block;
+  font-weight: 400;
+  font-size: 0.6875rem;
   color: #9ca3af;
 }
 
-.employee-placeholder-desc {
-  font-size: 0.875rem;
+.employee-negative { color: #dc2626 !important; }
+
+.employee-verdict { font-weight: 600; }
+.employee-verdict--green   { color: #16a34a !important; }
+.employee-verdict--red     { color: #dc2626 !important; }
+.employee-verdict--neutral { color: #6b7280 !important; }
+
+.employee-notes ul {
+  padding-left: 1.1rem;
+  font-size: 0.8125rem;
   color: #374151;
   line-height: 1.6;
 }
 
-.employee-placeholder-ref {
-  font-size: 0.8125rem;
-  color: #9ca3af;
-  line-height: 1.5;
-}
+.employee-notes li { margin-bottom: 0.5rem; }
 
 .audit-intercompany {
   margin: 0 1rem 0.75rem;

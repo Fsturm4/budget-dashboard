@@ -124,8 +124,9 @@ Recorded in production (name → version Supabase assigned → file in this repo
 |------|--------------------|-----------------|
 | `reconcile_replace_actuals` | `20261106232421` | `20261106000000_reconcile_replace_actuals.sql` |
 | `reconcile_safeupdate_fix` | `20261107001048` | `20261107000000_reconcile_safeupdate_fix.sql` |
+| `sep_ira_expense` | `20261123040120` | `20261122000000_sep_ira_expense.sql` |
 
-Both are already applied. Do not run either file again.
+All three are already applied. Do not run any of these files again.
 
 Before the next migration:
 1. Compare `select version, name from supabase_migrations.schema_migrations order by version` with `supabase/migrations/`. Match by **name**, not version.
