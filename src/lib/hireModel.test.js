@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { projectHire } from './hireModel.js'
+import { projectHire, profitNeeded } from './hireModel.js'
 
 // Full-Year Outlook with $67,620.40 of owner wages, the $20,000 SEP and $28,656 of rent already inside net income.
 const OUTLOOK = { netIncome: 5865407, ownerWages: 6762040, sep: 2000000, rent: 2865600, depreciation: 132050 }
@@ -122,4 +122,12 @@ test('a benefit equal to the employee cost covers it exactly', () => {
   assert.equal(s.costNotCovered, 0)
   assert.equal(s.benefitSurplus, 0)
   assert.equal(s.netIncome, at(3200, 0).netIncome)
+})
+
+test('profit needed is the gap between the target and projected net income, never negative', () => {
+  assert.equal(profitNeeded(3000000, 1981447), 1018553)
+  assert.equal(profitNeeded(3000000, -92153),  3092153)
+  assert.equal(profitNeeded(3000000, 5437447), 0)
+  assert.equal(profitNeeded(3000000, 3000000), 0)
+  assert.equal(profitNeeded(0, -92153),        92153)
 })

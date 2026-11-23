@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase.js'
 import { formatDollars, toCents } from '../lib/money.js'
 import { DASHBOARD_YEAR, ACTUALS_STATUS } from '../lib/config.js'
 import { buildDashboard } from '../lib/dashboard.js'
-import { projectHire } from '../lib/hireModel.js'
+import { projectHire, profitNeeded } from '../lib/hireModel.js'
 
 const HIRE_YEAR   = DASHBOARD_YEAR + 1
 const STORAGE_KEY = 'employee-analysis-assumptions-v2'
@@ -27,6 +27,7 @@ const DEFAULT_ASSUMPTIONS = {
   lineOfCredit:   '',
   partTimeBenefit: '0',
   fullTimeBenefit: '0',
+  desiredNetIncome: '30000',
 }
 
 const ASSUMPTION_FIELDS = [
@@ -113,6 +114,7 @@ export default function EmployeeAnalysis() {
   const noEmployee = scenarios[0]
   const hires      = scenarios.slice(1)
   const lineOfCreditOwed = assumptions.lineOfCreditCents > 0
+  const desiredNetIncomeCents = toCents(inputs.desiredNetIncome)
 
   const negative    = cents => cents < 0 ? 'employee-negative' : undefined
   const signed      = cents => `${cents > 0 ? '+' : ''}${formatDollars(cents)}`
@@ -325,6 +327,41 @@ export default function EmployeeAnalysis() {
             </tbody>
           </table>
         </details>
+      </section>
+
+      <section className="overview-section">
+        <h2 className="overview-section-title">How much additional profit do I need?</h2>
+        <label className="employee-field employee-target">
+          <span>Desired annual net income ($)</span>
+          <input
+            type="number" min="0" step="0.01"
+            value={inputs.desiredNetIncome}
+            onChange={e => setNonnegativeDollars('desiredNetIncome', e.target.value)}
+          />
+          <small>Comparison only — does not change the projection</small>
+        </label>
+        <table className="settings-table employee-table">
+          <thead>
+            <tr>
+              <th></th>
+              {scenarios.map(s => <th key={s.label}>{s.label}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Current projected net income<small>Same figure as the {HIRE_YEAR} projection</small></td>
+              {scenarios.map(s => <td key={s.label} className={negative(s.netIncome)}>{formatDollars(s.netIncome)}</td>)}
+            </tr>
+            <tr className="employee-key-row">
+              <td>Additional annual profit needed to reach the target</td>
+              {scenarios.map(s => <td key={s.label}>{formatDollars(profitNeeded(desiredNetIncomeCents, s.netIncome))}</td>)}
+            </tr>
+          </tbody>
+        </table>
+        <p className="employee-start-note">
+          Reaching the target may also resolve a projected cash shortfall, provided the additional profit is
+          collected during the year.
+        </p>
       </section>
 
       <section className="overview-section">

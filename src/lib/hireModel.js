@@ -34,3 +34,8 @@ export function projectHire(outlook, assumptions, hours, hireBenefitCents = 0) {
     debtCarried:  Math.max(0, -yearEndCashLessDebt),
   }
 }
+
+// Comparison only: what a scenario still lacks against a net income target. Never negative.
+export function profitNeeded(desiredNetIncomeCents, netIncomeCents) {
+  return Math.max(0, desiredNetIncomeCents - netIncomeCents)
+}
