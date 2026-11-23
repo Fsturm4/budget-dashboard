@@ -40,9 +40,9 @@ const ASSUMPTION_FIELDS = [
 function yearEndVerdict(scenario, balancesEntered) {
   if (!balancesEntered) return { text: 'Enter cash and line of credit', color: 'neutral' }
   if (scenario.debtCarried > 0) {
-    return { text: `Carries ${formatDollars(scenario.debtCarried)} of debt into ${HIRE_YEAR + 1}`, color: 'red' }
+    return { text: `Cash short of repaying LOC by ${formatDollars(scenario.debtCarried)}`, color: 'red' }
   }
-  return { text: `No debt carried into ${HIRE_YEAR + 1}`, color: 'green' }
+  return { text: 'Cash sufficient to repay LOC', color: 'green' }
 }
 
 export default function EmployeeAnalysis() {
@@ -222,7 +222,9 @@ export default function EmployeeAnalysis() {
           <li>
             <strong>Seasonal borrowing is not the test; year-end debt is.</strong> Drawing on the line of credit
             during the season and repaying it is not modeled and does not count against a hire. A negative
-            year-end figure means the season would end with debt that {HIRE_YEAR + 1} revenue has to repay.
+            year-end figure means year-end cash would not cover the line of credit, so the balance would
+            have to be repaid from {HIRE_YEAR + 1} revenue. A positive figure means the cash is there to
+            repay it, not that it has been repaid.
           </li>
           <li>
             <strong>Cash figures are estimates, not bank balances.</strong> They are built from the
