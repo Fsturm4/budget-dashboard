@@ -2,16 +2,17 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { projectHire } from './hireModel.js'
 
-// Full-Year Outlook with $67,620.40 of owner wages and the $20,000 SEP already inside net income.
-const OUTLOOK = { netIncome: 5701391, ownerWages: 6762040, sep: 2000000, depreciation: 132050 }
+// Full-Year Outlook with $67,620.40 of owner wages, the $20,000 SEP and $28,656 of rent already inside net income.
+const OUTLOOK = { netIncome: 5865407, ownerWages: 6762040, sep: 2000000, rent: 2865600, depreciation: 132050 }
 
 const ASSUMPTIONS = {
   hourlyRateCents:     3200,
   burdenPct:           20,
   ownerSalaryCents:    8000000,
   sepCents:            2000000,
+  rentCents:           2055600,
   distributionsCents:  2000000,
-  motherPaymentsCents: 1728000,
+  motherPaymentsCents: 1729872,
   loanPrincipalCents:  0,
   startingCashCents:   6000000,
   lineOfCreditCents:   1000000,
@@ -29,8 +30,16 @@ test('technician cost is hours x wage x (1 + burden) at $30, $32 and $34', () =>
   assert.equal(at(3200, 0).technicianCost,    0)
 })
 
-test('with no employee, net income is the outlook with owner salary raised to the planned amount', () => {
-  assert.equal(at(3200, 0).netIncome, 5701391 - (8000000 - 6762040))
+test('with no employee, net income is the outlook with owner salary and rent set to the planned amounts', () => {
+  assert.equal(at(3200, 0).netIncome, 5865407 - (8000000 - 6762040) + (2865600 - 2055600))
+  assert.equal(at(3200, 0).netIncome, 5437447)
+})
+
+test('planned rent replaces the rent in the outlook, whatever that was', () => {
+  const beforeBudgetChange = projectHire(
+    { ...OUTLOOK, netIncome: OUTLOOK.netIncome - 502916, rent: OUTLOOK.rent + 502916 }, ASSUMPTIONS, 0
+  )
+  assert.equal(beforeBudgetChange.netIncome, at(3200, 0).netIncome)
 })
 
 test('SEP is counted once whether or not the outlook already contains it', () => {
@@ -46,13 +55,13 @@ test('distributions, payments to mother and loan principal reduce cash but not n
     OUTLOOK, { ...ASSUMPTIONS, distributionsCents: 3000000, motherPaymentsCents: 2000000, loanPrincipalCents: 500000 }, 1440
   )
   assert.equal(more.netIncome, base.netIncome)
-  assert.equal(more.cashChange, base.cashChange - 1000000 - 272000 - 500000)
+  assert.equal(more.cashChange, base.cashChange - 1000000 - 270128 - 500000)
 })
 
 test('cash change is net income plus depreciation less cash-only obligations', () => {
   for (const hours of [0, 900, 1440]) {
     const s = at(3200, hours)
-    assert.equal(s.cashChange, s.netIncome + 132050 - 2000000 - 1728000)
+    assert.equal(s.cashChange, s.netIncome + 132050 - 2000000 - 1729872)
     assert.equal(s.yearEndCashLessDebt, 6000000 - 1000000 + s.cashChange)
   }
 })

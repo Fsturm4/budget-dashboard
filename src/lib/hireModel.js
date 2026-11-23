@@ -1,10 +1,10 @@
 // One hiring option for the year after the dashboard year. All money in integer cents.
-// Starts from the Full-Year Outlook net income. Owner wages and SEP in the outlook
-// are replaced by the planned amounts so each is counted once. Distributions,
-// payments to mother and loan principal reduce cash only.
+// Starts from the Full-Year Outlook net income. Owner wages, SEP and Rent & Lease in
+// the outlook are replaced by the planned amounts so each is counted once.
+// Distributions, payments to mother and loan principal reduce cash only.
 export function projectHire(outlook, assumptions, hours) {
   const {
-    hourlyRateCents, burdenPct, ownerSalaryCents, sepCents, distributionsCents,
+    hourlyRateCents, burdenPct, ownerSalaryCents, sepCents, rentCents, distributionsCents,
     motherPaymentsCents, loanPrincipalCents, startingCashCents, lineOfCreditCents,
   } = assumptions
 
@@ -13,6 +13,7 @@ export function projectHire(outlook, assumptions, hours) {
   const netIncome = outlook.netIncome
     + outlook.ownerWages - ownerSalaryCents
     + outlook.sep - sepCents
+    + outlook.rent - rentCents
     - technicianCost
 
   const cashChange = netIncome + outlook.depreciation
