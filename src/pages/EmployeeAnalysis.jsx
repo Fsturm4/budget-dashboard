@@ -9,9 +9,9 @@ const HIRE_YEAR   = DASHBOARD_YEAR + 1
 const STORAGE_KEY = 'employee-analysis-assumptions-v2'
 
 const OPTIONS = [
-  { label: 'No employee',        hours: 0 },
-  { label: 'Part-time seasonal', hours: 900,  benefitKey: 'partTimeBenefit' },
-  { label: 'Full-time seasonal', hours: 1440, benefitKey: 'fullTimeBenefit' },
+  { label: 'No employee',        hours: 0,    improvementKey: 'noEmployeeImprovement' },
+  { label: 'Part-time seasonal', hours: 900,  improvementKey: 'withEmployeeImprovement' },
+  { label: 'Full-time seasonal', hours: 1440, improvementKey: 'withEmployeeImprovement' },
 ]
 
 const DEFAULT_ASSUMPTIONS = {
@@ -25,8 +25,8 @@ const DEFAULT_ASSUMPTIONS = {
   loanPrincipal:  '0',
   startingCash:   '',
   lineOfCredit:   '',
-  partTimeBenefit: '0',
-  fullTimeBenefit: '0',
+  noEmployeeImprovement:   '0',
+  withEmployeeImprovement: '0',
   desiredNetIncome: '30000',
 }
 
@@ -37,6 +37,11 @@ const ASSUMPTION_FIELDS = [
   { key: 'loanPrincipal',  label: 'Other loan principal ($)',      note: 'Cash only — not in the outlook' },
   { key: 'startingCash',   label: `Cash on January 1, ${HIRE_YEAR} ($)`,           note: 'Manual entry — not from QuickBooks' },
   { key: 'lineOfCredit',   label: `Line of credit owed January 1, ${HIRE_YEAR} ($)`, note: 'Manual entry — not from QuickBooks' },
+]
+
+const IMPROVEMENT_FIELDS = [
+  { key: 'noEmployeeImprovement',   label: 'Additional annual profit / savings — no employee ($)',   note: 'Applies to the No employee column only' },
+  { key: 'withEmployeeImprovement', label: 'Additional annual profit / savings — with employee ($)', note: 'Applies equally to the Part-time and Full-time columns' },
 ]
 
 // Expenses already inside the Full-Year Outlook that are replaced by a planned amount.
@@ -108,11 +113,9 @@ export default function EmployeeAnalysis() {
   }
 
   const scenarios = OPTIONS.map(option => {
-    const hireBenefitCents = toCents(inputs[option.benefitKey] ?? 0)
-    return { ...option, hireBenefitCents, ...projectHire(outlook, assumptions, option.hours, hireBenefitCents) }
+    return { ...option, ...projectHire(outlook, assumptions, option.hours, toCents(inputs[option.improvementKey])) }
   })
-  const noEmployee = scenarios[0]
-  const hires      = scenarios.slice(1)
+  const netIncomeBeforeHire = projectHire(outlook, assumptions, 0).netIncome
   const lineOfCreditOwed = assumptions.lineOfCreditCents > 0
   const desiredNetIncomeCents = toCents(inputs.desiredNetIncome)
 
@@ -172,7 +175,7 @@ export default function EmployeeAnalysis() {
               <td>{HIRE_YEAR} net income before any hire</td>
               <td></td>
               <td></td>
-              <td className={negative(noEmployee.netIncome)}><strong>{formatDollars(noEmployee.netIncome)}</strong></td>
+              <td className={negative(netIncomeBeforeHire)}><strong>{formatDollars(netIncomeBeforeHire)}</strong></td>
             </tr>
           </tbody>
         </table>
@@ -223,36 +226,28 @@ export default function EmployeeAnalysis() {
       </section>
 
       <section className="overview-section">
-        <h2 className="overview-section-title">What the hire could bring in — optional</h2>
+        <h2 className="overview-section-title">Business improvements — optional</h2>
         <table className="settings-table employee-table employee-start-table">
-          <thead>
-            <tr>
-              <th></th>
-              {hires.map(s => <th key={s.label}>{s.label} ({s.hours.toLocaleString('en-US')} hours)</th>)}
-            </tr>
-          </thead>
           <tbody>
-            <tr>
-              <td>
-                Additional annual profit / savings from hiring ($)
-                <small>After additional materials and other direct costs, before the employee's wages and payroll burden</small>
-              </td>
-              {hires.map(s => (
-                <td key={s.label}>
+            {IMPROVEMENT_FIELDS.map(({ key, label, note }) => (
+              <tr key={key}>
+                <td>{label}<small>{note}</small></td>
+                <td>
                   <input
-                    type="number" min="0" step="0.01" aria-label={`Additional annual profit or savings from hiring, ${s.label}`}
-                    value={inputs[s.benefitKey]}
-                    onChange={e => setNonnegativeDollars(s.benefitKey, e.target.value)}
+                    type="number" min="0" step="0.01" aria-label={label}
+                    value={inputs[key]}
+                    onChange={e => setNonnegativeDollars(key, e.target.value)}
                   />
                 </td>
-              ))}
-            </tr>
+              </tr>
+            ))}
           </tbody>
         </table>
         <p className="employee-start-note">
-          Your own estimate of the combined benefit: profit on new work plus savings on work now paid to
-          subcontractors. Left at $0, the projection assumes the hire brings in nothing. Do not subtract the
-          employee's cost here; it is calculated separately.
+          Each amount is the total additional annual profit or savings you expect under that scenario, after
+          materials and other direct costs and before employee wages, which are calculated separately. The
+          with-employee amount is the complete estimate, not an addition to the no-employee amount. Both are
+          assumed to be collected during the year.
         </p>
       </section>
 
@@ -277,7 +272,7 @@ export default function EmployeeAnalysis() {
               {scenarios.map(s => <td key={s.label}>{formatDollars(s.technicianCost)}</td>)}
             </tr>
             <tr className="employee-key-row">
-              <td>Projected net income<small>Accounting profit, including any profit or savings entered above</small></td>
+              <td>Projected net income<small>Accounting profit, including the business improvement entered above</small></td>
               {scenarios.map(s => <td key={s.label} className={negative(s.netIncome)}>{formatDollars(s.netIncome)}</td>)}
             </tr>
             <tr>
@@ -364,35 +359,6 @@ export default function EmployeeAnalysis() {
         </p>
       </section>
 
-      <section className="overview-section">
-        <h2 className="overview-section-title">Does the hire pay for itself?</h2>
-        <table className="settings-table employee-table">
-          <thead>
-            <tr>
-              <th></th>
-              {hires.map(s => <th key={s.label}>{s.label}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Annual employee cost</td>
-              {hires.map(s => <td key={s.label}>{formatDollars(s.technicianCost)}</td>)}
-            </tr>
-            <tr>
-              <td>Additional profit / savings you entered</td>
-              {hires.map(s => <td key={s.label}>{formatDollars(s.hireBenefitCents)}</td>)}
-            </tr>
-            <tr className="employee-key-row">
-              <td>Result</td>
-              {hires.map(s => s.costNotCovered > 0
-                ? <td key={s.label} className="employee-negative">{formatDollars(s.costNotCovered)} of the cost not covered</td>
-                : <td key={s.label} className="employee-positive">Cost covered — surplus of {formatDollars(s.benefitSurplus)}</td>
-              )}
-            </tr>
-          </tbody>
-        </table>
-      </section>
-
       <section className="overview-section employee-notes">
         <h2 className="overview-section-title">How to read this</h2>
         <ul>
@@ -433,8 +399,8 @@ export default function EmployeeAnalysis() {
             expense, net income falls by that amount and cash is unchanged.
           </li>
           <li>
-            <strong>Profit and savings are credited to the hire only if you enter them.</strong> The amount
-            is your own estimate, is added in full to net income and cash, and is assumed to be collected
+            <strong>Business improvements count only if you enter them.</strong> Each amount is your own
+            estimate, is added in full to net income and cash for its scenario, and is assumed to be collected
             within {HIRE_YEAR}. Less physical load on you, rounds finished on schedule,
             coverage if you are sick or injured, and time for sales and management are real benefits but are
             not given a dollar value here.
