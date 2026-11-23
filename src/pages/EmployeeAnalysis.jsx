@@ -25,6 +25,11 @@ const DEFAULT_ASSUMPTIONS = {
   loanPrincipal:  '0',
   startingCash:   '',
   lineOfCredit:   '',
+  partTimeAddedRevenue: '0',
+  partTimeSubSavings: '0',
+  fullTimeAddedRevenue: '0',
+  fullTimeSubSavings: '0',
+  addedRevenueMargin: '60',
 }
 
 const ASSUMPTION_FIELDS = [
@@ -45,14 +50,6 @@ const SUBSTITUTED_EXPENSES = [
 
 // Planning check only: an employer SEP contribution is generally limited to 25% of the salary it is based on.
 const SEP_SHARE_OF_SALARY = 0.25
-
-function yearEndVerdict(scenario, balancesEntered) {
-  if (!balancesEntered) return { text: 'Enter cash and line of credit', color: 'neutral' }
-  if (scenario.debtCarried > 0) {
-    return { text: `Cash short of repaying LOC by ${formatDollars(scenario.debtCarried)}`, color: 'red' }
-  }
-  return { text: 'Cash sufficient to repay LOC', color: 'green' }
-}
 
 export default function EmployeeAnalysis() {
   const [dashboard,  setDashboard]  = useState(null)
@@ -109,7 +106,14 @@ export default function EmployeeAnalysis() {
     lineOfCreditCents:   toCents(inputs.lineOfCredit),
   }
 
-  const scenarios = OPTIONS.map(option => ({ ...option, ...projectHire(outlook, assumptions, option.hours) }))
+  const scenarioBenefits = [
+    {},
+    { addedRevenueCents: toCents(inputs.partTimeAddedRevenue), subcontractorSavingsCents: toCents(inputs.partTimeSubSavings), grossMarginPct: Number(inputs.addedRevenueMargin) },
+    { addedRevenueCents: toCents(inputs.fullTimeAddedRevenue), subcontractorSavingsCents: toCents(inputs.fullTimeSubSavings), grossMarginPct: Number(inputs.addedRevenueMargin) },
+  ]
+  const scenarios = OPTIONS.map((option, index) => ({
+    ...option, ...projectHire(outlook, assumptions, option.hours, scenarioBenefits[index]),
+  }))
   const noEmployee = scenarios[0]
 
   const negative    = cents => cents < 0 ? 'employee-negative' : undefined
@@ -117,8 +121,8 @@ export default function EmployeeAnalysis() {
 
   const plannedSepLimit = Math.round(assumptions.ownerSalaryCents * SEP_SHARE_OF_SALARY)
   const outlookSepLimit = Math.round(outlook.ownerWages * SEP_SHARE_OF_SALARY)
-  const balanceCell = (key, cents, isBad) => balancesEntered
-    ? <td key={key} className={isBad ? 'employee-negative' : undefined}>{formatDollars(cents)}</td>
+  const balanceCell = (key, cents, isBad, emph = false) => balancesEntered
+    ? <td key={key} className={`${isBad ? 'employee-negative' : ''} ${emph ? 'employee-key-value' : ''}`}>{formatDollars(cents)}</td>
     : <td key={key}>—</td>
 
   const monthCount = dashboard.actualizedMonths.length
@@ -218,47 +222,109 @@ export default function EmployeeAnalysis() {
         </div>
       </section>
 
+      <section className="overview-section employee-benefit-section">
+        <h2 className="overview-section-title">What could hiring add?</h2>
+        <p className="employee-start-note">
+          Enter only annual new sales and subcontractor costs avoided because of the hire.
+          Zero means no additional benefit. These estimates affect the hiring scenarios only, not QuickBooks or your 2026 outlook.
+        </p>
+        <div className="employee-benefit-grid">
+          <div className="employee-benefit-heading"></div>
+          <strong>Part-time (900 hours)</strong>
+          <strong>Full-time (1,440 hours)</strong>
+          <label htmlFor="partTimeAddedRevenue">Additional annual revenue ($)</label>
+          <input id="partTimeAddedRevenue" type="number" min="0" value={inputs.partTimeAddedRevenue} onChange={e => setInput('partTimeAddedRevenue', e.target.value)} />
+          <input aria-label="Full-time additional annual revenue" type="number" min="0" value={inputs.fullTimeAddedRevenue} onChange={e => setInput('fullTimeAddedRevenue', e.target.value)} />
+          <label htmlFor="partTimeSubSavings">Annual subcontractor savings ($)</label>
+          <input id="partTimeSubSavings" type="number" min="0" value={inputs.partTimeSubSavings} onChange={e => setInput('partTimeSubSavings', e.target.value)} />
+          <input aria-label="Full-time annual subcontractor savings" type="number" min="0" value={inputs.fullTimeSubSavings} onChange={e => setInput('fullTimeSubSavings', e.target.value)} />
+        </div>
+        <label className="employee-benefit-margin">
+          <span>Profit margin on additional revenue (%)</span>
+          <input type="number" min="0" max="100" value={inputs.addedRevenueMargin} onChange={e => setInput('addedRevenueMargin', e.target.value)} />
+        </label>
+        <p className="employee-start-note">
+          For example, $10,000 in new sales at a 60% contribution margin adds $6,000 before the employee's wages.
+          The 60% is an editable illustration, not a verified Turf Pro margin.
+          Don't count the same subcontracted work as both new sales and avoided subcontractor expense.
+        </p>
+      </section>
+
       <section className="overview-section">
         <h2 className="overview-section-title">{HIRE_YEAR} comparison</h2>
-        <table className="settings-table employee-table">
-          <thead>
-            <tr>
-              <th></th>
-              {scenarios.map(s => (
-                <th key={s.label}>{s.label}{s.hours > 0 && ` (${s.hours.toLocaleString('en-US')} hours)`}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Annual cost of the hire<small>Wages plus estimated employer burden</small></td>
-              {scenarios.map(s => <td key={s.label}>{formatDollars(s.technicianCost)}</td>)}
-            </tr>
-            <tr>
-              <td>Projected net income<small>Accounting profit, QuickBooks classifications</small></td>
-              {scenarios.map(s => <td key={s.label} className={negative(s.netIncome)}>{formatDollars(s.netIncome)}</td>)}
-            </tr>
-            <tr>
-              <td>Estimated cash generated or used<small>Net income, plus depreciation, less distributions, payments to mother and loan principal</small></td>
-              {scenarios.map(s => <td key={s.label} className={negative(s.cashChange)}>{formatDollars(s.cashChange)}</td>)}
-            </tr>
-            <tr>
-              <td>New borrowing needed by year-end<small>Estimate — cash used beyond the starting cash you entered</small></td>
-              {scenarios.map(s => balanceCell(s.label, s.newBorrowing, s.newBorrowing > 0))}
-            </tr>
-            <tr>
-              <td>Year-end cash less line of credit<small>Estimate — starting cash, less line of credit owed, plus cash generated or used</small></td>
-              {scenarios.map(s => balanceCell(s.label, s.yearEndCashLessDebt, s.yearEndCashLessDebt < 0))}
-            </tr>
-            <tr>
-              <td>Year-end result</td>
-              {scenarios.map(s => {
-                const { text, color } = yearEndVerdict(s, balancesEntered)
-                return <td key={s.label} className={`employee-verdict employee-verdict--${color}`}>{text}</td>
-              })}
-            </tr>
-          </tbody>
-        </table>
+        <p className="employee-start-note">All amounts are estimates. Starting cash and LOC are the figures you entered above; additional hiring benefits are zero unless you change them.</p>
+        <div className="employee-table-scroll">
+          <table className="settings-table employee-table employee-comparison-table">
+            <thead>
+              <tr>
+                <th></th>
+                {scenarios.map(s => <th key={s.label}>{s.label}{s.hours > 0 && ` (${s.hours.toLocaleString('en-US')} hours)`}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Starting cash<small>Same for each scenario</small></td>
+                {scenarios.map(s => balanceCell(s.label, assumptions.startingCashCents, false))}
+              </tr>
+              <tr>
+                <td>Annual cost of employee<small>Wages + estimated employer burden</small></td>
+                {scenarios.map(s => <td key={s.label}>{formatDollars(s.technicianCost)}</td>)}
+              </tr>
+              <tr>
+                <td>Additional revenue<small>Annual sales attributable to hiring</small></td>
+                {scenarios.map(s => <td key={s.label}>{formatDollars(s.addedRevenueCents)}</td>)}
+              </tr>
+              <tr>
+                <td>Profit from additional revenue<small>After the direct costs of new work</small></td>
+                {scenarios.map(s => <td key={s.label}>{formatDollars(s.addedGrossProfitCents)}</td>)}
+              </tr>
+              <tr>
+                <td>Subcontractor savings<small>Existing costs no longer incurred</small></td>
+                {scenarios.map(s => <td key={s.label}>{formatDollars(s.subcontractorSavingsCents)}</td>)}
+              </tr>
+              <tr className="employee-key-row">
+                <td>Projected business net profit<small>After owner salary, SEP, rent and employee cost</small></td>
+                {scenarios.map(s => <td key={s.label} className={negative(s.netIncome)}>{formatDollars(s.netIncome)}</td>)}
+              </tr>
+              <tr>
+                <td>Cash added or used during the year<small>Profit + depreciation − personal distributions − purchase payments − principal</small></td>
+                {scenarios.map(s => <td key={s.label} className={negative(s.cashChange)}>{s.cashChange > 0 ? '+' : ''}{formatDollars(s.cashChange)}</td>)}
+              </tr>
+              <tr className="employee-key-row">
+                <td>Projected year-end cash after LOC<small>Starting cash + annual cash change − starting LOC balance; not an actual bank balance</small></td>
+                {scenarios.map(s => balanceCell(s.label, s.yearEndCashLessDebt, s.yearEndCashLessDebt < 0, true))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <details className="employee-detail">
+          <summary>Additional borrowing and calculation details</summary>
+          <div className="employee-table-scroll">
+            <table className="settings-table employee-table">
+              <thead>
+                <tr><th></th>{scenarios.map(s => <th key={s.label}>{s.label}</th>)}</tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>New borrowing needed by year-end<small>Annual cash shortfall beyond starting cash; does not show peak seasonal borrowing</small></td>
+                  {scenarios.map(s => balanceCell(s.label, s.newBorrowing, s.newBorrowing > 0))}
+                </tr>
+                <tr>
+                  <td>Starting line of credit owed</td>
+                  {scenarios.map(s => balanceCell(s.label, assumptions.lineOfCreditCents, false))}
+                </tr>
+                <tr>
+                  <td>Year-end cash less line of credit<small>Does not prove you can meet payroll every month</small></td>
+                  {scenarios.map(s => balanceCell(s.label, s.yearEndCashLessDebt, s.yearEndCashLessDebt < 0))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+        <p className="employee-start-note">
+          A positive year-end cash estimate does not guarantee you can cover payroll throughout the season.
+          This calculation excludes receivables and payables timing, vehicle/equipment purchases, and any employee SEP benefit not entered elsewhere.
+        </p>
       </section>
 
       <section className="overview-section employee-notes">
@@ -298,9 +364,10 @@ export default function EmployeeAnalysis() {
             expense, net income falls by that amount and cash is unchanged.
           </li>
           <li>
-            <strong>No revenue is credited to the hire.</strong> Less physical load on you, rounds finished on
-            schedule, coverage if you are sick or injured, and time for sales and management are real benefits
-            but are not given a dollar value here.
+            <strong>Hiring benefits are optional scenarios.</strong> Added revenue is included at the editable contribution
+            margin; subcontractor savings are added separately. Both default to zero, and neither is a guarantee.
+            Less physical load on you, rounds finished on schedule, coverage if you are sick or injured,
+            and time for sales and management may also matter but are not assigned a dollar value.
           </li>
         </ul>
       </section>
