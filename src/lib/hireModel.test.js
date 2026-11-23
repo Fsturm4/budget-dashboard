@@ -87,3 +87,39 @@ test('new borrowing is only what the year uses beyond starting cash', () => {
   assert.equal(short.newBorrowing, short.debtCarried - 1000000)
   assert.equal(short.newBorrowing, -(1000000 + short.cashChange))
 })
+
+const withBenefit = (hours, hireBenefitCents) => projectHire(OUTLOOK, ASSUMPTIONS, hours, hireBenefitCents)
+
+test('with no benefit entered, every figure equals the projection without one', () => {
+  for (const hours of [0, 900, 1440]) {
+    assert.deepEqual(withBenefit(hours, 0), at(3200, hours))
+  }
+})
+
+test('the benefit raises net income, cash and year-end cash by the same amount and leaves the employee cost alone', () => {
+  const before = at(3200, 1440)
+  const after  = withBenefit(1440, 4500000)
+  assert.equal(after.technicianCost,      before.technicianCost)
+  assert.equal(after.netIncome,           before.netIncome + 4500000)
+  assert.equal(after.cashChange,          before.cashChange + 4500000)
+  assert.equal(after.yearEndCashLessDebt, before.yearEndCashLessDebt + 4500000)
+})
+
+test('a benefit below the employee cost leaves the difference uncovered', () => {
+  const s = withBenefit(1440, 4500000)
+  assert.equal(s.costNotCovered, 5529600 - 4500000)
+  assert.equal(s.benefitSurplus, 0)
+})
+
+test('a benefit above the employee cost is a surplus, never a negative shortfall', () => {
+  const s = withBenefit(900, 4500000)
+  assert.equal(s.costNotCovered, 0)
+  assert.equal(s.benefitSurplus, 4500000 - 3456000)
+})
+
+test('a benefit equal to the employee cost covers it exactly', () => {
+  const s = withBenefit(900, 3456000)
+  assert.equal(s.costNotCovered, 0)
+  assert.equal(s.benefitSurplus, 0)
+  assert.equal(s.netIncome, at(3200, 0).netIncome)
+})

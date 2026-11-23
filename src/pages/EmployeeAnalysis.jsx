@@ -10,8 +10,8 @@ const STORAGE_KEY = 'employee-analysis-assumptions-v2'
 
 const OPTIONS = [
   { label: 'No employee',        hours: 0 },
-  { label: 'Part-time seasonal', hours: 900 },
-  { label: 'Full-time seasonal', hours: 1440 },
+  { label: 'Part-time seasonal', hours: 900,  benefitKey: 'partTimeBenefit' },
+  { label: 'Full-time seasonal', hours: 1440, benefitKey: 'fullTimeBenefit' },
 ]
 
 const DEFAULT_ASSUMPTIONS = {
@@ -25,6 +25,8 @@ const DEFAULT_ASSUMPTIONS = {
   loanPrincipal:  '0',
   startingCash:   '',
   lineOfCredit:   '',
+  partTimeBenefit: '0',
+  fullTimeBenefit: '0',
 }
 
 const ASSUMPTION_FIELDS = [
@@ -45,14 +47,6 @@ const SUBSTITUTED_EXPENSES = [
 
 // Planning check only: an employer SEP contribution is generally limited to 25% of the salary it is based on.
 const SEP_SHARE_OF_SALARY = 0.25
-
-function yearEndVerdict(scenario, balancesEntered) {
-  if (!balancesEntered) return { text: 'Enter cash and line of credit', color: 'neutral' }
-  if (scenario.debtCarried > 0) {
-    return { text: `Cash short of repaying LOC by ${formatDollars(scenario.debtCarried)}`, color: 'red' }
-  }
-  return { text: 'Cash sufficient to repay LOC', color: 'green' }
-}
 
 export default function EmployeeAnalysis() {
   const [dashboard,  setDashboard]  = useState(null)
@@ -86,6 +80,9 @@ export default function EmployeeAnalysis() {
   if (!dashboard) return <div className="page"><p className="overview-status">Loading…</p></div>
 
   const setInput = (key, value) => setInputs(current => ({ ...current, [key]: value }))
+  const setNonnegativeDollars = (key, value) => {
+    if (Number.isFinite(Number(value)) && Number(value) >= 0) setInput(key, value)
+  }
 
   const outlook = {
     netIncome:    dashboard.kpi.ni.ol,
@@ -109,8 +106,13 @@ export default function EmployeeAnalysis() {
     lineOfCreditCents:   toCents(inputs.lineOfCredit),
   }
 
-  const scenarios = OPTIONS.map(option => ({ ...option, ...projectHire(outlook, assumptions, option.hours) }))
+  const scenarios = OPTIONS.map(option => {
+    const hireBenefitCents = toCents(inputs[option.benefitKey] ?? 0)
+    return { ...option, hireBenefitCents, ...projectHire(outlook, assumptions, option.hours, hireBenefitCents) }
+  })
   const noEmployee = scenarios[0]
+  const hires      = scenarios.slice(1)
+  const lineOfCreditOwed = assumptions.lineOfCreditCents > 0
 
   const negative    = cents => cents < 0 ? 'employee-negative' : undefined
   const signed      = cents => `${cents > 0 ? '+' : ''}${formatDollars(cents)}`
@@ -219,7 +221,41 @@ export default function EmployeeAnalysis() {
       </section>
 
       <section className="overview-section">
-        <h2 className="overview-section-title">{HIRE_YEAR} comparison</h2>
+        <h2 className="overview-section-title">What the hire could bring in — optional</h2>
+        <table className="settings-table employee-table employee-start-table">
+          <thead>
+            <tr>
+              <th></th>
+              {hires.map(s => <th key={s.label}>{s.label} ({s.hours.toLocaleString('en-US')} hours)</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                Additional annual profit / savings from hiring ($)
+                <small>After additional materials and other direct costs, before the employee's wages and payroll burden</small>
+              </td>
+              {hires.map(s => (
+                <td key={s.label}>
+                  <input
+                    type="number" min="0" step="0.01" aria-label={`Additional annual profit or savings from hiring, ${s.label}`}
+                    value={inputs[s.benefitKey]}
+                    onChange={e => setNonnegativeDollars(s.benefitKey, e.target.value)}
+                  />
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+        <p className="employee-start-note">
+          Your own estimate of the combined benefit: profit on new work plus savings on work now paid to
+          subcontractors. Left at $0, the projection assumes the hire brings in nothing. Do not subtract the
+          employee's cost here; it is calculated separately.
+        </p>
+      </section>
+
+      <section className="overview-section">
+        <h2 className="overview-section-title">{HIRE_YEAR} projection</h2>
         <table className="settings-table employee-table">
           <thead>
             <tr>
@@ -231,31 +267,90 @@ export default function EmployeeAnalysis() {
           </thead>
           <tbody>
             <tr>
-              <td>Annual cost of the hire<small>Wages plus estimated employer burden</small></td>
-              {scenarios.map(s => <td key={s.label}>{formatDollars(s.technicianCost)}</td>)}
+              <td>Starting cash<small>As you entered it — not from QuickBooks</small></td>
+              {scenarios.map(s => balanceCell(s.label, assumptions.startingCashCents, false))}
             </tr>
             <tr>
-              <td>Projected net income<small>Accounting profit, QuickBooks classifications</small></td>
+              <td>Annual employee cost<small>Wages plus estimated employer burden</small></td>
+              {scenarios.map(s => <td key={s.label}>{formatDollars(s.technicianCost)}</td>)}
+            </tr>
+            <tr className="employee-key-row">
+              <td>Projected net income<small>Accounting profit, including any profit or savings entered above</small></td>
               {scenarios.map(s => <td key={s.label} className={negative(s.netIncome)}>{formatDollars(s.netIncome)}</td>)}
             </tr>
             <tr>
-              <td>Estimated cash generated or used<small>Net income, plus depreciation, less distributions, payments to mother and loan principal</small></td>
-              {scenarios.map(s => <td key={s.label} className={negative(s.cashChange)}>{formatDollars(s.cashChange)}</td>)}
+              <td>Cash gained or used during {HIRE_YEAR}<small>Net income, plus depreciation, less distributions, payments to mother and loan principal</small></td>
+              {scenarios.map(s => <td key={s.label} className={negative(s.cashChange)}>{signed(s.cashChange)}</td>)}
+            </tr>
+            <tr className="employee-key-row">
+              <td>
+                Projected cash remaining at year-end
+                <small>
+                  {lineOfCreditOwed
+                    ? `After repaying the ${formatDollars(assumptions.lineOfCreditCents)} line of credit owed on January 1`
+                    : 'Starting cash plus cash gained or used'}
+                </small>
+              </td>
+              {scenarios.map(s => balancesEntered
+                ? (
+                  <td key={s.label} className={negative(s.yearEndCashLessDebt)}>
+                    {formatDollars(s.yearEndCashLessDebt)}
+                    {s.debtCarried > 0 && <small>Projected funding shortfall, not a bank balance</small>}
+                  </td>
+                )
+                : <td key={s.label}>—</td>
+              )}
+            </tr>
+          </tbody>
+        </table>
+        {!balancesEntered && (
+          <p className="employee-start-note">Enter starting cash and the line of credit owed to see the cash rows.</p>
+        )}
+        <details className="employee-details">
+          <summary>Borrowing and line of credit details</summary>
+          <table className="settings-table employee-table">
+            <tbody>
+              <tr>
+                <td>Line of credit owed January 1, {HIRE_YEAR}</td>
+                {scenarios.map(s => balanceCell(s.label, assumptions.lineOfCreditCents, false))}
+              </tr>
+              <tr>
+                <td>New borrowing needed by year-end<small>Estimate — cash used beyond the starting cash you entered</small></td>
+                {scenarios.map(s => balanceCell(s.label, s.newBorrowing, s.newBorrowing > 0))}
+              </tr>
+              <tr>
+                <td>Projected funding shortfall at year-end<small>What year-end cash would not cover, including the line of credit</small></td>
+                {scenarios.map(s => balanceCell(s.label, s.debtCarried, s.debtCarried > 0))}
+              </tr>
+            </tbody>
+          </table>
+        </details>
+      </section>
+
+      <section className="overview-section">
+        <h2 className="overview-section-title">Does the hire pay for itself?</h2>
+        <table className="settings-table employee-table">
+          <thead>
+            <tr>
+              <th></th>
+              {hires.map(s => <th key={s.label}>{s.label}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Annual employee cost</td>
+              {hires.map(s => <td key={s.label}>{formatDollars(s.technicianCost)}</td>)}
             </tr>
             <tr>
-              <td>New borrowing needed by year-end<small>Estimate — cash used beyond the starting cash you entered</small></td>
-              {scenarios.map(s => balanceCell(s.label, s.newBorrowing, s.newBorrowing > 0))}
+              <td>Additional profit / savings you entered</td>
+              {hires.map(s => <td key={s.label}>{formatDollars(s.hireBenefitCents)}</td>)}
             </tr>
-            <tr>
-              <td>Year-end cash less line of credit<small>Estimate — starting cash, less line of credit owed, plus cash generated or used</small></td>
-              {scenarios.map(s => balanceCell(s.label, s.yearEndCashLessDebt, s.yearEndCashLessDebt < 0))}
-            </tr>
-            <tr>
-              <td>Year-end result</td>
-              {scenarios.map(s => {
-                const { text, color } = yearEndVerdict(s, balancesEntered)
-                return <td key={s.label} className={`employee-verdict employee-verdict--${color}`}>{text}</td>
-              })}
+            <tr className="employee-key-row">
+              <td>Result</td>
+              {hires.map(s => s.costNotCovered > 0
+                ? <td key={s.label} className="employee-negative">{formatDollars(s.costNotCovered)} of the cost not covered</td>
+                : <td key={s.label} className="employee-positive">Cost covered — surplus of {formatDollars(s.benefitSurplus)}</td>
+              )}
             </tr>
           </tbody>
         </table>
@@ -265,16 +360,19 @@ export default function EmployeeAnalysis() {
         <h2 className="overview-section-title">How to read this</h2>
         <ul>
           <li>
-            <strong>Seasonal borrowing is not the test; year-end debt is.</strong> Drawing on the line of credit
-            during the season and repaying it is not modeled and does not count against a hire. A negative
-            year-end figure means year-end cash would not cover the line of credit, so the balance would
-            have to be repaid from {HIRE_YEAR + 1} revenue. A positive figure means the cash is there to
-            repay it, not that it has been repaid.
+            <strong>This is a planning estimate, not a guarantee that a hire is affordable.</strong> Year-end
+            cash does not show whether payroll can be covered week by week during the season. Drawing on the
+            line of credit during the season and repaying it is not modeled.
           </li>
           <li>
-            <strong>Cash figures are estimates, not bank balances.</strong> They are built from the
-            profit-and-loss outlook and the starting cash and line of credit you typed in. No balance sheet
-            or bank data is imported.
+            <strong>A negative year-end figure is a projected funding shortfall, not a bank balance.</strong> It
+            is the amount that would have to be borrowed, or repaid from {HIRE_YEAR + 1} revenue, under these
+            assumptions.
+          </li>
+          <li>
+            <strong>Cash figures are built from what you typed in.</strong> Starting cash and the line of credit
+            are manual entries, so they are only as current as the balance you used; a prior year-end balance
+            is a reference, not a confirmed January 1, {HIRE_YEAR} balance. No balance sheet or bank data is imported.
           </li>
           <li>
             <strong>Net income is not cash.</strong> Distributions, payments to your mother and loan principal
@@ -298,9 +396,11 @@ export default function EmployeeAnalysis() {
             expense, net income falls by that amount and cash is unchanged.
           </li>
           <li>
-            <strong>No revenue is credited to the hire.</strong> Less physical load on you, rounds finished on
-            schedule, coverage if you are sick or injured, and time for sales and management are real benefits
-            but are not given a dollar value here.
+            <strong>Profit and savings are credited to the hire only if you enter them.</strong> The amount
+            is your own estimate, is added in full to net income and cash, and is assumed to be collected
+            within {HIRE_YEAR}. Less physical load on you, rounds finished on schedule,
+            coverage if you are sick or injured, and time for sales and management are real benefits but are
+            not given a dollar value here.
           </li>
         </ul>
       </section>

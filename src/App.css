@@ -1605,10 +1605,13 @@ button.nav-link {
 
 .employee-negative { color: #dc2626 !important; }
 
-.employee-verdict { font-weight: 600; }
-.employee-verdict--green   { color: #16a34a !important; }
-.employee-verdict--red     { color: #dc2626 !important; }
-.employee-verdict--neutral { color: #6b7280 !important; }
+.employee-positive { color: #16a34a !important; }
+
+.employee-key-row td { font-weight: 700; font-size: 1rem; background: #f9fafb; }
+.employee-key-row small { font-weight: 400; }
+
+.employee-details { margin-top: 0.75rem; }
+.employee-details summary { cursor: pointer; font-size: 0.875rem; color: #374151; }
 
 .employee-notes ul {
   padding-left: 1.1rem;

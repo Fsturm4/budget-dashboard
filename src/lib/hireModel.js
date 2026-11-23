@@ -2,7 +2,8 @@
 // Starts from the Full-Year Outlook net income. Owner wages, SEP and Rent & Lease in
 // the outlook are replaced by the planned amounts so each is counted once.
 // Distributions, payments to mother and loan principal reduce cash only.
-export function projectHire(outlook, assumptions, hours) {
+// hireBenefitCents is the profit or savings the hire brings in, before the technician's own cost.
+export function projectHire(outlook, assumptions, hours, hireBenefitCents = 0) {
   const {
     hourlyRateCents, burdenPct, ownerSalaryCents, sepCents, rentCents, distributionsCents,
     motherPaymentsCents, loanPrincipalCents, startingCashCents, lineOfCreditCents,
@@ -15,6 +16,7 @@ export function projectHire(outlook, assumptions, hours) {
     + outlook.sep - sepCents
     + outlook.rent - rentCents
     - technicianCost
+    + hireBenefitCents
 
   const cashChange = netIncome + outlook.depreciation
     - distributionsCents - motherPaymentsCents - loanPrincipalCents
@@ -23,6 +25,8 @@ export function projectHire(outlook, assumptions, hours) {
 
   return {
     technicianCost,
+    costNotCovered: Math.max(0, technicianCost - hireBenefitCents),
+    benefitSurplus: Math.max(0, hireBenefitCents - technicianCost),
     netIncome,
     cashChange,
     yearEndCashLessDebt,
