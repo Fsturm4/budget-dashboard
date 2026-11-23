@@ -115,7 +115,7 @@ export default function EmployeeAnalysis() {
   const scenarios = OPTIONS.map(option => {
     return { ...option, ...projectHire(outlook, assumptions, option.hours, toCents(inputs[option.improvementKey])) }
   })
-  const noEmployee = scenarios[0]
+  const netIncomeBeforeHire = projectHire(outlook, assumptions, 0).netIncome
   const lineOfCreditOwed = assumptions.lineOfCreditCents > 0
   const desiredNetIncomeCents = toCents(inputs.desiredNetIncome)
 
@@ -175,7 +175,7 @@ export default function EmployeeAnalysis() {
               <td>{HIRE_YEAR} net income before any hire</td>
               <td></td>
               <td></td>
-              <td className={negative(noEmployee.netIncome)}><strong>{formatDollars(noEmployee.netIncome)}</strong></td>
+              <td className={negative(netIncomeBeforeHire)}><strong>{formatDollars(netIncomeBeforeHire)}</strong></td>
             </tr>
           </tbody>
         </table>
