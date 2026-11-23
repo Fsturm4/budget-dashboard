@@ -44,6 +44,15 @@ Steps 3–4 and 5–9 are independent; either group can go first. Each migration
 | 12 | Migrate June: two restoring corrections plus one transfer per check, in one transaction that aborts unless every month's combined total per category is unchanged. The script holds real figures, so it is kept outside this repository | Claude, on approval | Company views return to QuickBooks; combined unchanged |
 | 13 | Record each month's transfers as months are imported | Owner or Claude, on approval | Combined revenue and COGS each fall by the transfer; profit unchanged |
 
+**SEP IRA Expense** (independent of the steps above):
+
+| # | Step | Who | Effect on figures |
+|---|------|-----|-------------------|
+| 14 | Merge the SEP IRA PR | Claude, on approval | None: the new row shows dashes until step 15 |
+| 15 | Snapshot, then apply `migrations/20261122000000_sep_ira_expense.sql` | Claude, on approval | 2026 budget: Operating Expenses +$20,000 in December, Net Income −$20,000. Full-Year Outlook Net Income −$20,000. Year-to-date figures and all actuals unchanged |
+
+Do steps 14 and 15 together. With only one of them done, the Overview and the Monthly Tracker disagree by the $20,000.
+
 ## Creating your Supabase sign-in (step 5)
 
 1. Open the Supabase dashboard and select the project.
@@ -78,6 +87,13 @@ To reset a forgotten password, use the same Users page.
 - `uploads.source` also accepts `'reconciliation'`.
 - `anon` is denied on the new tables and functions; the signed-in owner can read the tables but change them only through `replace_company_actuals` and `restore_actuals_replacement`.
 - Run `tests/reconcile_replace_test.sql` on the local copy first. Do not run it against production (it rolls back, but uses made-up months).
+
+**After the SEP IRA migration:**
+- Table counts are unchanged except `categories` (+1), `mappings` (+1) and `budget` (+1).
+- Every company-month actuals total is unchanged; no `sep_ira_expense` actuals exist.
+- 2026 budgeted Operating Expenses rise by exactly $20,000.00, all in December.
+- The owner opens Overview, Monthly Tracker and 2026 Budget and sees the SEP IRA Expense line.
+- The mapping is for GreenAce label `6770 SEP IRA Expense`. QuickBooks leaves zero-balance accounts off the export, so the label is unconfirmed until the contribution is recorded. If the export words it differently, the upload flags it as unmapped; add that label under Settings → Mappings.
 
 ## Reconciling a corrected QuickBooks report
 
@@ -123,6 +139,7 @@ Before the next migration:
 - **Access control:** `rollback/20261104000000_dashboard_access_control_down.sql` restores the previous open access immediately, without touching financial data. Then fix and re-apply.
 - **Intercompany:** `rollback/20261105000000_intercompany_reconciliation_down.sql` removes it while no transfer or reviewed month exists. After that, void a transfer to reverse both its eliminations together; June's restoring corrections can be reversed with the correction workflow.
 - **Reconcile:** `rollback/20261106000000_reconcile_replace_actuals_down.sql` removes it while no replacement exists. After that, restore replacements from the Reconcile page instead (history is never deleted).
+- **SEP IRA:** `rollback/20261122000000_sep_ira_expense_down.sql` removes the category, mapping and budget line while no SEP figure has been imported. After that, fix forward.
 - **Frontend:** redeploy the previous build from Netlify's Deploys page, or revert the merge on GitHub.
 
 ## Adding a person later
