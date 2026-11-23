@@ -58,6 +58,7 @@ export const TABLE_ROWS = [
   { type: 'input',   slug: 'vehicle_registration',        label: 'Vehicle Registration',                     varDir: L },
   { type: 'input',   slug: 'vehicle_expense',             label: 'Vehicle Expense',                          varDir: L },
   { type: 'input',   slug: 'penalties_and_fees',          label: 'Penalties & Fees',                         varDir: L },
+  { type: 'input',   slug: 'sep_ira_expense',             label: 'SEP IRA Expense',                          varDir: L },
   { type: 'input',   slug: 'pending_opex',                label: 'Uncategorized – Pending Review',          varDir: L, pending: true },
   { type: 'derived', key: 'total_opex',                   label: 'Total Operating Expenses',                 varDir: L },
   { type: 'derived', key: 'noi',                          label: 'Net Operating Income',                     varDir: H },
@@ -82,7 +83,7 @@ export const SECTION_SLUGS = {
     'dues_and_subscriptions', 'professional_fees', 'bank_fees', 'tax_property',
     'email', 'education', 'interest_paid', 'entertainment', 'licenses_and_permits',
     'tax_excise', 'payroll_taxes_non_owner', 'vehicle_registration', 'vehicle_expense',
-    'penalties_and_fees', 'pending_opex',
+    'penalties_and_fees', 'sep_ira_expense', 'pending_opex',
   ],
   other: ['other_income_expense', 'pending_other'],
 }
