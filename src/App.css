@@ -1611,6 +1611,7 @@ button.nav-link {
 .employee-key-row small { font-weight: 400; }
 
 .employee-details { margin-top: 0.75rem; }
+.employee-target  { max-width: 280px; margin-bottom: 0.75rem; }
 .employee-details summary { cursor: pointer; font-size: 0.875rem; color: #374151; }
 
 .employee-notes ul {
