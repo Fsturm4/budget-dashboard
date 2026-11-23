@@ -10,8 +10,8 @@ const STORAGE_KEY = 'employee-analysis-assumptions-v2'
 
 const OPTIONS = [
   { label: 'No employee',        hours: 0 },
-  { label: 'Part-time seasonal', hours: 900,  revenueKey: 'partTimeRevenue', savingsKey: 'partTimeSavings' },
-  { label: 'Full-time seasonal', hours: 1440, revenueKey: 'fullTimeRevenue', savingsKey: 'fullTimeSavings' },
+  { label: 'Part-time seasonal', hours: 900,  benefitKey: 'partTimeBenefit' },
+  { label: 'Full-time seasonal', hours: 1440, benefitKey: 'fullTimeBenefit' },
 ]
 
 const DEFAULT_ASSUMPTIONS = {
@@ -25,11 +25,8 @@ const DEFAULT_ASSUMPTIONS = {
   loanPrincipal:  '0',
   startingCash:   '',
   lineOfCredit:   '',
-  partTimeRevenue:       '0',
-  partTimeSavings:       '0',
-  fullTimeRevenue:       '0',
-  fullTimeSavings:       '0',
-  contributionMarginPct: '75',
+  partTimeBenefit: '0',
+  fullTimeBenefit: '0',
 }
 
 const ASSUMPTION_FIELDS = [
@@ -91,8 +88,6 @@ export default function EmployeeAnalysis() {
     rent:         dashboard.fullYearOutlook('rent_and_lease'),
     depreciation: dashboard.fullYearOutlook('depreciation'),
   }
-  const outlookRevenue          = dashboard.kpi.rev.ol
-  const outlookSubcontractLabor = dashboard.fullYearOutlook('subcontract_labor')
 
   const balancesEntered = inputs.startingCash !== '' && inputs.lineOfCredit !== ''
   const assumptions = {
@@ -109,12 +104,8 @@ export default function EmployeeAnalysis() {
   }
 
   const scenarios = OPTIONS.map(option => {
-    const benefits = {
-      additionalRevenueCents:    toCents(inputs[option.revenueKey] ?? 0),
-      subcontractorSavingsCents: toCents(inputs[option.savingsKey] ?? 0),
-      contributionMarginPct:     Number(inputs.contributionMarginPct),
-    }
-    return { ...option, ...benefits, ...projectHire(outlook, assumptions, option.hours, benefits) }
+    const hireBenefitCents = toCents(inputs[option.benefitKey] ?? 0)
+    return { ...option, hireBenefitCents, ...projectHire(outlook, assumptions, option.hours, hireBenefitCents) }
   })
   const noEmployee = scenarios[0]
   const hires      = scenarios.slice(1)
@@ -128,21 +119,6 @@ export default function EmployeeAnalysis() {
   const balanceCell = (key, cents, isBad) => balancesEntered
     ? <td key={key} className={isBad ? 'employee-negative' : undefined}>{formatDollars(cents)}</td>
     : <td key={key}>—</td>
-  const revenueCell = (key, cents) => <td key={key}>{cents === null ? '—' : formatDollars(cents)}</td>
-  const benefitInputRow = (label, note, inputKey) => (
-    <tr>
-      <td>{label}<small>{note}</small></td>
-      {hires.map(s => (
-        <td key={s.label}>
-          <input
-            type="number" min="0" aria-label={`${label}, ${s.label}`}
-            value={inputs[s[inputKey]]}
-            onChange={e => setInput(s[inputKey], e.target.value)}
-          />
-        </td>
-      ))}
-    </tr>
-  )
 
   const monthCount = dashboard.actualizedMonths.length
 
@@ -251,40 +227,27 @@ export default function EmployeeAnalysis() {
             </tr>
           </thead>
           <tbody>
-            {benefitInputRow(
-              'Additional annual revenue ($)',
-              `New work only — on top of the ${formatDollars(outlookRevenue)} of revenue already in the outlook`,
-              'revenueKey'
-            )}
-            {benefitInputRow(
-              'Subcontractor savings ($)',
-              `Work now paid to subcontractors — the outlook has ${formatDollars(outlookSubcontractLabor)} of Subcontract Labor`,
-              'savingsKey'
-            )}
+            <tr>
+              <td>
+                Additional annual profit / savings from hiring ($)
+                <small>After additional materials and other direct costs, before the employee's wages and payroll burden</small>
+              </td>
+              {hires.map(s => (
+                <td key={s.label}>
+                  <input
+                    type="number" min="0" aria-label={`Additional annual profit or savings from hiring, ${s.label}`}
+                    value={inputs[s.benefitKey]}
+                    onChange={e => setInput(s.benefitKey, e.target.value)}
+                  />
+                </td>
+              ))}
+            </tr>
           </tbody>
         </table>
-        <label className="employee-field employee-margin">
-          <span>Contribution margin on additional revenue (%)</span>
-          <input
-            type="number" min="0" max="100"
-            value={inputs.contributionMarginPct}
-            onChange={e => setInput('contributionMarginPct', e.target.value)}
-          />
-          <small>
-            Estimate — the share of each new dollar left after materials and other direct costs,
-            before the employee's wages, which are already counted in the annual employee cost
-          </small>
-        </label>
-        {hires.filter(s => s.subcontractorSavingsCents > outlookSubcontractLabor).map(s => (
-          <p key={s.label} className="employee-warning">
-            {s.label}: subcontractor savings of {formatDollars(s.subcontractorSavingsCents)} are above
-            the {formatDollars(outlookSubcontractLabor)} of Subcontract Labor in the outlook.
-            The amount is left as you entered it.
-          </p>
-        ))}
         <p className="employee-start-note">
-          Left at $0, the projection assumes the hire brings in nothing. New work the employee does instead of
-          a subcontractor belongs in additional revenue only, not also in savings.
+          Your own estimate of the combined benefit: profit on new work plus savings on work now paid to
+          subcontractors. Left at $0, the projection assumes the hire brings in nothing. Do not subtract the
+          employee's cost here; it is calculated separately.
         </p>
       </section>
 
@@ -309,7 +272,7 @@ export default function EmployeeAnalysis() {
               {scenarios.map(s => <td key={s.label}>{formatDollars(s.technicianCost)}</td>)}
             </tr>
             <tr className="employee-key-row">
-              <td>Projected net income<small>Accounting profit, including any revenue or savings entered above</small></td>
+              <td>Projected net income<small>Accounting profit, including any profit or savings entered above</small></td>
               {scenarios.map(s => <td key={s.label} className={negative(s.netIncome)}>{formatDollars(s.netIncome)}</td>)}
             </tr>
             <tr>
@@ -376,8 +339,8 @@ export default function EmployeeAnalysis() {
               {hires.map(s => <td key={s.label}>{formatDollars(s.technicianCost)}</td>)}
             </tr>
             <tr>
-              <td>Benefit from hiring<small>Additional revenue × contribution margin, plus subcontractor savings</small></td>
-              {hires.map(s => <td key={s.label}>{formatDollars(s.hireBenefit)}</td>)}
+              <td>Additional profit / savings you entered</td>
+              {hires.map(s => <td key={s.label}>{formatDollars(s.hireBenefitCents)}</td>)}
             </tr>
             <tr className="employee-key-row">
               <td>Result</td>
@@ -385,14 +348,6 @@ export default function EmployeeAnalysis() {
                 ? <td key={s.label} className="employee-negative">{formatDollars(s.costNotCovered)} of the cost not covered</td>
                 : <td key={s.label} className="employee-positive">Cost covered — surplus of {formatDollars(s.benefitSurplus)}</td>
               )}
-            </tr>
-            <tr>
-              <td>Total additional revenue that covers the employee<small>At the margin and subcontractor savings entered</small></td>
-              {hires.map(s => revenueCell(s.label, s.revenueToCoverCost))}
-            </tr>
-            <tr>
-              <td>Additional revenue still needed<small>Beyond the additional revenue you entered</small></td>
-              {hires.map(s => revenueCell(s.label, s.revenueStillNeeded))}
             </tr>
           </tbody>
         </table>
@@ -438,9 +393,9 @@ export default function EmployeeAnalysis() {
             expense, net income falls by that amount and cash is unchanged.
           </li>
           <li>
-            <strong>Revenue and savings are credited to the hire only if you enter them.</strong> Additional
-            revenue counts at the contribution margin and is assumed to be collected within {HIRE_YEAR};
-            subcontractor savings count in full. Less physical load on you, rounds finished on schedule,
+            <strong>Profit and savings are credited to the hire only if you enter them.</strong> The amount
+            is your own estimate, is added in full to net income and cash, and is assumed to be collected
+            within {HIRE_YEAR}. Less physical load on you, rounds finished on schedule,
             coverage if you are sick or injured, and time for sales and management are real benefits but are
             not given a dollar value here.
           </li>

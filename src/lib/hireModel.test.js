@@ -88,61 +88,38 @@ test('new borrowing is only what the year uses beyond starting cash', () => {
   assert.equal(short.newBorrowing, -(1000000 + short.cashChange))
 })
 
-const withBenefits = (hours, benefits) => projectHire(OUTLOOK, ASSUMPTIONS, hours, benefits)
-const EXAMPLE = { additionalRevenueCents: 4000000, subcontractorSavingsCents: 1500000, contributionMarginPct: 75 }
+const withBenefit = (hours, hireBenefitCents) => projectHire(OUTLOOK, ASSUMPTIONS, hours, hireBenefitCents)
 
-test('with no revenue or savings entered, every figure equals the projection without benefits', () => {
-  const zero = { additionalRevenueCents: 0, subcontractorSavingsCents: 0, contributionMarginPct: 75 }
+test('with no benefit entered, every figure equals the projection without one', () => {
   for (const hours of [0, 900, 1440]) {
-    const before = at(3200, hours)
-    const after  = withBenefits(hours, zero)
-    for (const key of ['technicianCost', 'netIncome', 'cashChange', 'yearEndCashLessDebt', 'newBorrowing', 'debtCarried']) {
-      assert.equal(after[key], before[key])
-    }
-    assert.equal(after.hireBenefit, 0)
+    assert.deepEqual(withBenefit(hours, 0), at(3200, hours))
   }
-})
-
-test('additional revenue counts at its contribution margin and subcontractor savings in full', () => {
-  assert.equal(withBenefits(1440, EXAMPLE).hireBenefit, 3000000 + 1500000)
-  assert.equal(withBenefits(1440, { ...EXAMPLE, contributionMarginPct: 60 }).hireBenefit, 2400000 + 1500000)
-  assert.equal(withBenefits(1440, { ...EXAMPLE, additionalRevenueCents: 0 }).hireBenefit, 1500000)
 })
 
 test('the benefit raises net income, cash and year-end cash by the same amount and leaves the employee cost alone', () => {
   const before = at(3200, 1440)
-  const after  = withBenefits(1440, EXAMPLE)
+  const after  = withBenefit(1440, 4500000)
   assert.equal(after.technicianCost,      before.technicianCost)
   assert.equal(after.netIncome,           before.netIncome + 4500000)
   assert.equal(after.cashChange,          before.cashChange + 4500000)
   assert.equal(after.yearEndCashLessDebt, before.yearEndCashLessDebt + 4500000)
 })
 
-test('full-time example: $13,728 more revenue covers the cost left after $40,000 of revenue and $15,000 of savings', () => {
-  const s = withBenefits(1440, EXAMPLE)
-  assert.equal(s.costNotCovered,     5529600 - 4500000)
-  assert.equal(s.revenueToCoverCost, 5372800)
-  assert.equal(s.revenueStillNeeded, 1372800)
-  assert.equal(s.revenueToCoverCost, EXAMPLE.additionalRevenueCents + s.revenueStillNeeded)
-  assert.equal(s.benefitSurplus,     0)
+test('a benefit below the employee cost leaves the difference uncovered', () => {
+  const s = withBenefit(1440, 4500000)
+  assert.equal(s.costNotCovered, 5529600 - 4500000)
+  assert.equal(s.benefitSurplus, 0)
 })
 
-test('when benefits exceed the cost, no more revenue is needed and the excess is a surplus', () => {
-  const s = withBenefits(900, EXAMPLE)
-  assert.equal(s.costNotCovered,     0)
-  assert.equal(s.revenueStillNeeded, 0)
-  assert.equal(s.benefitSurplus,     4500000 - 3456000)
+test('a benefit above the employee cost is a surplus, never a negative shortfall', () => {
+  const s = withBenefit(900, 4500000)
+  assert.equal(s.costNotCovered, 0)
+  assert.equal(s.benefitSurplus, 4500000 - 3456000)
 })
 
-test('savings above the employee cost need no revenue at all', () => {
-  const s = withBenefits(900, { additionalRevenueCents: 0, subcontractorSavingsCents: 4000000, contributionMarginPct: 75 })
-  assert.equal(s.revenueToCoverCost, 0)
-  assert.equal(s.benefitSurplus,     4000000 - 3456000)
-})
-
-test('with a zero margin, no amount of revenue covers the cost', () => {
-  const s = withBenefits(1440, { ...EXAMPLE, contributionMarginPct: 0 })
-  assert.equal(s.hireBenefit,        1500000)
-  assert.equal(s.revenueToCoverCost, null)
-  assert.equal(s.revenueStillNeeded, null)
+test('a benefit equal to the employee cost covers it exactly', () => {
+  const s = withBenefit(900, 3456000)
+  assert.equal(s.costNotCovered, 0)
+  assert.equal(s.benefitSurplus, 0)
+  assert.equal(s.netIncome, at(3200, 0).netIncome)
 })
