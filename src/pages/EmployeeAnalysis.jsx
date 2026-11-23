@@ -183,9 +183,11 @@ export default function EmployeeAnalysis() {
           </p>
         )}
         {outlook.sep > outlookSepLimit && (
-          <p className="employee-warning">
-            The {DASHBOARD_YEAR} outlook has {formatDollars(outlook.sep)} of SEP against {formatDollars(outlook.ownerWages)} of
-            owner wages; 25% of those wages is {formatDollars(outlookSepLimit)}. Confirm with your CPA.
+          <p className="employee-start-note">
+            For reference: the {DASHBOARD_YEAR} outlook is a forecast and currently shows {formatDollars(outlook.ownerWages)} of
+            owner wages, 25% of which is {formatDollars(outlookSepLimit)}, alongside {formatDollars(outlook.sep)} of SEP.
+            This is not a finding about {DASHBOARD_YEAR}; it clears if owner wages for the year finish at or
+            above {formatDollars(Math.round(outlook.sep / SEP_SHARE_OF_SALARY))}.
           </p>
         )}
       </section>
