@@ -3,7 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } fro
 import { supabase } from '../lib/supabase.js'
 import { formatDollars } from '../lib/money.js'
 import { DASHBOARD_YEAR, MONTH_LABELS, VARIANCE_THRESHOLD_PCT, ACTUALS_STATUS } from '../lib/config.js'
-import { buildDashboard } from '../lib/dashboard.js'
+import { buildDashboard, outlookBreakdown } from '../lib/dashboard.js'
 
 function varColor(actualCents, budgetCents, higherIsBetter) {
   if (budgetCents === 0) return 'neutral'
@@ -31,6 +31,16 @@ function buildContextLine(months) {
     : ''
 
   return `Based on ${actualRange} ${DASHBOARD_YEAR} actuals${remainStr ? ` + ${remainStr}` : ''}`
+}
+
+// "Nov–Dec" for the months that still come from budget; empty once the year is fully uploaded.
+function remainingMonthsLabel(months) {
+  const remaining = MONTH_LABELS.map((label, i) => ({ label: label.slice(0, 3), month: i + 1 }))
+    .filter(({ month }) => !months.includes(month))
+  if (remaining.length === 0) return ''
+  if (remaining.length === 1) return remaining[0].label
+  const consecutive = remaining.every((r, i) => i === 0 || r.month === remaining[i - 1].month + 1)
+  return consecutive ? `${remaining[0].label}–${remaining[remaining.length - 1].label}` : remaining.map(r => r.label).join(', ')
 }
 
 // ── sub-components (local, not exported) ──────────────────────────────────────
@@ -77,6 +87,75 @@ function OutlookCard({ label, outlookCents, annualBudgetCents }) {
           <span className="outlook-var-pct"> ({varPct >= 0 ? '+' : ''}{(varPct * 100).toFixed(1)}%)</span>
         )}
       </p>
+    </div>
+  )
+}
+
+const signed = cents => `${cents > 0 ? '+' : ''}${formatDollars(cents)}`
+
+function BreakdownRow({ label, line, higherIsBetter, level, expanded, onToggle }) {
+  const difference = line.outlook - line.annual
+  const favorable  = higherIsBetter ? difference > 0 : difference < 0
+  const color      = difference === 0 ? 'neutral' : favorable ? 'green' : 'red'
+  return (
+    <tr className={`breakdown-row breakdown-row--${level}`}>
+      <td>
+        {onToggle
+          ? <button className="breakdown-toggle" onClick={onToggle} aria-expanded={expanded}>{expanded ? '▾' : '▸'} {label}</button>
+          : label}
+      </td>
+      <td>{formatDollars(line.ytd)}</td>
+      <td>{formatDollars(line.remaining)}</td>
+      <td>{formatDollars(line.outlook)}</td>
+      <td>{formatDollars(line.annual)}</td>
+      <td className={`breakdown-diff--${color}`}>{signed(difference)}</td>
+    </tr>
+  )
+}
+
+function OutlookBreakdown({ dashboard, remainingLabel }) {
+  const [open,         setOpen]         = useState(false)
+  const [openSections, setOpenSections] = useState([])
+  const { sections, netIncome } = outlookBreakdown(dashboard)
+
+  const toggleSection = key => setOpenSections(current =>
+    current.includes(key) ? current.filter(k => k !== key) : [...current, key]
+  )
+
+  return (
+    <div className="breakdown">
+      <button className="breakdown-open" onClick={() => setOpen(!open)} aria-expanded={open}>
+        {open ? '▾ Hide breakdown' : '▸ Show breakdown'}
+      </button>
+      {open && (
+        <table className="breakdown-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Year-to-date actual</th>
+              <th>Remaining budget{remainingLabel && ` (${remainingLabel})`}</th>
+              <th>Full-year outlook</th>
+              <th>Annual budget</th>
+              <th>Outlook vs. budget</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sections.flatMap(section => [
+              <BreakdownRow
+                key={section.key} label={section.label} line={section} higherIsBetter={section.higherIsBetter}
+                level="section" expanded={openSections.includes(section.key)} onToggle={() => toggleSection(section.key)}
+              />,
+              ...(openSections.includes(section.key) ? section.categories : []).map(category => (
+                <BreakdownRow
+                  key={category.slug} label={category.label} line={category}
+                  higherIsBetter={section.higherIsBetter} level="category"
+                />
+              )),
+            ])}
+            <BreakdownRow label="Net income" line={netIncome} higherIsBetter={true} level="total" />
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }
@@ -235,6 +314,7 @@ export default function Overview() {
           <OutlookCard label="Gross Profit" outlookCents={kpi.gp.ol}  annualBudgetCents={kpi.gp.an}  />
           <OutlookCard label="Net Income"   outlookCents={kpi.ni.ol}  annualBudgetCents={kpi.ni.an}  />
         </div>
+        <OutlookBreakdown dashboard={dashData} remainingLabel={remainingMonthsLabel(actualizedMonths)} />
       </section>
 
     </div>

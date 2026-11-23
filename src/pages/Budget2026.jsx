@@ -2,9 +2,25 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { DASHBOARD_YEAR } from '../lib/config.js'
 import { TABLE_ROWS, SECTION_SLUGS } from '../lib/trackerRows.js'
+import { buildDashboard } from '../lib/dashboard.js'
 
 const MONTH_COLS  = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
 const MONTH_HEADS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+const VIEW_OPTIONS = [
+  { value: 'outlook', label: 'Outlook' },
+  { value: 'monthly', label: 'Monthly' },
+]
+
+// Derived row key → the shared dashboard total that holds its outlook.
+const DERIVED_KPI = {
+  total_rev:    'rev',
+  total_cogs:   'cogs',
+  gross_profit: 'gp',
+  total_opex:   'opex',
+  noi:          'noi',
+  net_income:   'ni',
+}
 
 const DERIVED_VAR_DIR = {
   total_rev:    'higher_is_better',
@@ -82,6 +98,9 @@ export default function Budget2026() {
   const [fetchError, setFetchError] = useState(null)
   const [showVariance,  setShowVariance]  = useState(true)
   const [actualsData,   setActualsData]   = useState(null)
+  const [view,          setView]          = useState('outlook')
+  const [budgetData,    setBudgetData]    = useState(null)
+  const [outlookInputs, setOutlookInputs] = useState(null)
 
   useEffect(() => {
     supabase
@@ -95,6 +114,7 @@ export default function Budget2026() {
           return
         }
         setRows(computeBudgetRows(data ?? []))
+        setBudgetData(data ?? [])
         setLoading(false)
       })
   }, [])
@@ -103,7 +123,7 @@ export default function Budget2026() {
     Promise.all([
       supabase.from('actuals').select('category_slug,month,amount_cents')
         .eq('year', DASHBOARD_YEAR).eq('status', 'active'),
-      supabase.from('categories').select('slug,variance_direction'),
+      supabase.from('categories').select('slug,section,variance_direction'),
       supabase.from('active_intercompany_eliminations').select('category_slug,month,amount_cents')
         .eq('year', DASHBOARD_YEAR),
     ]).then(([{ data: aData, error: aErr }, { data: cData, error: cErr }, { data: eData, error: eErr }]) => {
@@ -133,11 +153,17 @@ export default function Budget2026() {
         net_income:   sec.revenue.map((v, i) => v - sec.cogs[i] - sec.opex[i] + (sec.other?.[i] ?? 0)),
       }
       setActualsData({ map, closed, dirs, derivedMap })
+      setOutlookInputs({ actuals: [...aData, ...eData], categories: cData })
     })
   }, [])
 
   if (loading)    return <div className="page"><p className="ref-status">Loading…</p></div>
   if (fetchError) return <div className="page"><p className="ref-error">{fetchError}</p></div>
+
+  // Same calculation as the Overview's Full-Year Outlook.
+  const dashboard = budgetData && outlookInputs
+    ? buildDashboard(outlookInputs.actuals, budgetData, outlookInputs.categories)
+    : null
 
   return (
     <div className="page ref-page">
@@ -146,6 +172,25 @@ export default function Budget2026() {
         Original annual budget and monthly distribution for all tracked categories.
         Read-only — no editing in version 1.
       </p>
+      <div className="tracker-controls" style={{ marginBottom: '0.75rem' }}>
+        <div className="tracker-toggle" role="group" aria-label="Budget view">
+          {VIEW_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              className={`tracker-toggle-btn ${view === opt.value ? 'tracker-toggle-btn--active' : ''}`}
+              onClick={() => setView(opt.value)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {view === 'outlook' && (dashboard
+        ? <OutlookTable rows={rows} dashboard={dashboard} />
+        : <p className="ref-status">Loading…</p>)}
+
+      {view === 'monthly' && <>
 <div style={{ margin: '12px 0' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem' }}>
           <input
@@ -215,6 +260,62 @@ export default function Budget2026() {
           </tbody>
         </table>
       </div>
+      </>}
     </div>
+  )
+}
+
+// Annual budget beside the Full-Year Outlook (actuals for uploaded months, budget
+// for the rest) for every category. Difference is outlook minus annual budget.
+function OutlookTable({ rows, dashboard }) {
+  const monthCount = dashboard.actualizedMonths.length
+  return (
+    <>
+      <p className="ref-note">
+        Full-Year Outlook = {monthCount} month{monthCount !== 1 ? 's' : ''} of QuickBooks actuals
+        {monthCount < 12 ? ' plus budget for the remaining months' : ''}, the same figure as the Overview.
+        Difference is outlook minus annual budget.
+      </p>
+      <div className="ref-table-wrapper budget-outlook-wrapper">
+        <table className="ref-table budget-outlook-table">
+          <thead>
+            <tr>
+              <th className="ref-th-name">Category</th>
+              <th className="ref-th-num ref-th-annual">Annual Budget</th>
+              <th className="ref-th-num">Full-Year Outlook</th>
+              <th className="ref-th-num">Difference</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(row => {
+              if (row.type === 'section') {
+                return (
+                  <tr key={row.idx} className="ref-section-row">
+                    <td colSpan={4}>{row.label}</td>
+                  </tr>
+                )
+              }
+              const isDerived = row.type === 'derived'
+              const outlook   = isDerived ? dashboard.kpi[DERIVED_KPI[row.key]].ol : dashboard.fullYearOutlook(row.slug)
+              if (row.pending && outlook === 0) return null
+              const difference = outlook - row.annual
+              const direction  = isDerived ? DERIVED_VAR_DIR[row.key] : row.varDir
+              const favorable  = direction === 'higher_is_better' ? difference > 0 : difference < 0
+              const color      = difference === 0 ? '#888' : favorable ? '#16a34a' : '#dc2626'
+              return (
+                <tr key={row.idx} className={isDerived ? 'ref-derived-row' : 'ref-input-row'}>
+                  <td className={`ref-td-name ${isDerived ? 'ref-td-name--derived' : ''}`}>{row.label}</td>
+                  <td className="ref-td-num ref-td-annual">{fmt(row.annual)}</td>
+                  <td className="ref-td-num">{fmt(outlook)}</td>
+                  <td className="ref-td-num" style={{ color }}>
+                    {difference > 0 ? '+' : ''}{fmt(difference)}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
   )
 }

@@ -29,15 +29,22 @@ const DEFAULT_ASSUMPTIONS = {
 
 const ASSUMPTION_FIELDS = [
   { key: 'burdenPct',      label: 'Employer payroll burden (%)',   note: 'Estimate' },
-  { key: 'ownerSalary',    label: 'Owner salary ($)' },
-  { key: 'sep',            label: 'Owner SEP IRA ($)' },
-  { key: 'rent',           label: 'Rent & Lease ($)',              note: '$1,650 rent + $63 storage a month' },
-  { key: 'distributions',  label: 'Personal distributions ($)',    note: 'Cash only' },
-  { key: 'motherPayments', label: 'Payments to mother ($)',        note: 'Cash only — treatment pending CPA' },
-  { key: 'loanPrincipal',  label: 'Other loan principal ($)',      note: 'Cash only — manual entry' },
+  { key: 'distributions',  label: 'Personal distributions ($)',    note: 'Cash only — not in the outlook' },
+  { key: 'motherPayments', label: 'Payments to mother ($)',        note: 'Cash only — not in the outlook; treatment pending CPA' },
+  { key: 'loanPrincipal',  label: 'Other loan principal ($)',      note: 'Cash only — not in the outlook' },
   { key: 'startingCash',   label: `Cash on January 1, ${HIRE_YEAR} ($)`,           note: 'Manual entry — not from QuickBooks' },
   { key: 'lineOfCredit',   label: `Line of credit owed January 1, ${HIRE_YEAR} ($)`, note: 'Manual entry — not from QuickBooks' },
 ]
+
+// Expenses already inside the Full-Year Outlook that are replaced by a planned amount.
+const SUBSTITUTED_EXPENSES = [
+  { key: 'ownerSalary', outlookKey: 'ownerWages', centsKey: 'ownerSalaryCents', label: 'Owner salary' },
+  { key: 'sep',         outlookKey: 'sep',        centsKey: 'sepCents',         label: 'Owner SEP IRA' },
+  { key: 'rent',        outlookKey: 'rent',       centsKey: 'rentCents',        label: 'Rent & Lease', note: '$1,650 rent + $63 storage a month' },
+]
+
+// Planning check only: an employer SEP contribution is generally limited to 25% of the salary it is based on.
+const SEP_SHARE_OF_SALARY = 0.25
 
 function yearEndVerdict(scenario, balancesEntered) {
   if (!balancesEntered) return { text: 'Enter cash and line of credit', color: 'neutral' }
@@ -106,6 +113,10 @@ export default function EmployeeAnalysis() {
   const noEmployee = scenarios[0]
 
   const negative    = cents => cents < 0 ? 'employee-negative' : undefined
+  const signed      = cents => `${cents > 0 ? '+' : ''}${formatDollars(cents)}`
+
+  const plannedSepLimit = Math.round(assumptions.ownerSalaryCents * SEP_SHARE_OF_SALARY)
+  const outlookSepLimit = Math.round(outlook.ownerWages * SEP_SHARE_OF_SALARY)
   const balanceCell = (key, cents, isBad) => balancesEntered
     ? <td key={key} className={isBad ? 'employee-negative' : undefined}>{formatDollars(cents)}</td>
     : <td key={key}>—</td>
@@ -123,43 +134,66 @@ export default function EmployeeAnalysis() {
 
       <section className="overview-section">
         <h2 className="overview-section-title">Starting point</h2>
-        <table className="settings-table employee-table">
+        <table className="settings-table employee-table employee-start-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>In the {DASHBOARD_YEAR} outlook</th>
+              <th>Planned for {HIRE_YEAR} (editable)</th>
+              <th>Effect on net income</th>
+            </tr>
+          </thead>
           <tbody>
             <tr>
               <td>{DASHBOARD_YEAR} Full-Year Outlook net income<small>Same figure as the Overview</small></td>
+              <td></td>
+              <td></td>
               <td>{formatDollars(outlook.netIncome)}</td>
             </tr>
-            <tr>
-              <td>
-                Owner salary adjustment
-                <small>{formatDollars(outlook.ownerWages)} in the outlook, {formatDollars(assumptions.ownerSalaryCents)} planned</small>
-              </td>
-              <td>{formatDollars(outlook.ownerWages - assumptions.ownerSalaryCents)}</td>
-            </tr>
-            <tr>
-              <td>
-                Owner SEP IRA adjustment
-                <small>{formatDollars(outlook.sep)} in the outlook, {formatDollars(assumptions.sepCents)} planned</small>
-              </td>
-              <td>{formatDollars(outlook.sep - assumptions.sepCents)}</td>
-            </tr>
-            <tr>
-              <td>
-                Rent &amp; Lease adjustment
-                <small>{formatDollars(outlook.rent)} in the outlook, {formatDollars(assumptions.rentCents)} planned</small>
-              </td>
-              <td>{formatDollars(outlook.rent - assumptions.rentCents)}</td>
-            </tr>
+            {SUBSTITUTED_EXPENSES.map(({ key, outlookKey, centsKey, label, note }) => (
+              <tr key={key}>
+                <td>{label}{note && <small>{note}</small>}</td>
+                <td>{formatDollars(outlook[outlookKey])}</td>
+                <td>
+                  <input
+                    type="number" min="0" aria-label={`${label}, planned for ${HIRE_YEAR}`}
+                    value={inputs[key]}
+                    onChange={e => setInput(key, e.target.value)}
+                  />
+                </td>
+                <td>{signed(outlook[outlookKey] - assumptions[centsKey])}</td>
+              </tr>
+            ))}
             <tr>
               <td>{HIRE_YEAR} net income before any hire</td>
+              <td></td>
+              <td></td>
               <td className={negative(noEmployee.netIncome)}><strong>{formatDollars(noEmployee.netIncome)}</strong></td>
             </tr>
           </tbody>
         </table>
+        <p className="employee-start-note">
+          Planned amounts replace the amounts in the outlook for the {HIRE_YEAR} projection only.
+          They are saved in this browser and never change the {DASHBOARD_YEAR} Budget or outlook.
+        </p>
+        {assumptions.sepCents > plannedSepLimit && (
+          <p className="employee-warning">
+            Planned SEP of {formatDollars(assumptions.sepCents)} is above 25% of the planned salary
+            ({formatDollars(plannedSepLimit)}). The amount is left as you entered it; confirm the limit with your CPA.
+          </p>
+        )}
+        {outlook.sep > outlookSepLimit && (
+          <p className="employee-start-note">
+            For reference: the {DASHBOARD_YEAR} outlook is a forecast and currently shows {formatDollars(outlook.ownerWages)} of
+            owner wages, 25% of which is {formatDollars(outlookSepLimit)}, alongside {formatDollars(outlook.sep)} of SEP.
+            This is not a finding about {DASHBOARD_YEAR}; it clears if owner wages for the year finish at or
+            above {formatDollars(Math.round(outlook.sep / SEP_SHARE_OF_SALARY))}.
+          </p>
+        )}
       </section>
 
       <section className="overview-section employee-assumptions">
-        <h2 className="overview-section-title">Assumptions — editable, not QuickBooks data</h2>
+        <h2 className="overview-section-title">Other assumptions — editable, not QuickBooks data</h2>
         <label className="employee-wage">
           <span>Technician hourly wage</span>
           <input
@@ -254,9 +288,9 @@ export default function EmployeeAnalysis() {
           </li>
           <li>
             <strong>Owner salary, SEP and rent are counted once.</strong> The amounts already inside the outlook
-            are taken out and the planned amounts put in; the Starting point table shows each adjustment.
-            This changes the {HIRE_YEAR} projection only, not any {DASHBOARD_YEAR} figure. No other {HIRE_YEAR}
-            adjustment is made.
+            are taken out and the planned amounts put in; the Starting point table shows each one side by side.
+            This changes the {HIRE_YEAR} projection only, not any {DASHBOARD_YEAR} figure. No other
+            adjustment is made for {HIRE_YEAR}.
           </li>
           <li>
             <strong>Payments to your mother</strong> are treated as cash only, following the current QuickBooks
